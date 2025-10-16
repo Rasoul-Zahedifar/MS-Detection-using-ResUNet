@@ -68,8 +68,7 @@ class Trainer:
                 self.optimizer,
                 mode='min',
                 factor=config.LR_SCHEDULER_FACTOR,
-                patience=config.LR_SCHEDULER_PATIENCE,
-                verbose=True
+                patience=config.LR_SCHEDULER_PATIENCE
             )
         else:
             self.scheduler = None
