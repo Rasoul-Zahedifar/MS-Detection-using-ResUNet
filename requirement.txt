@@ -1,6 +1,19 @@
-numpy
-nibabel
-scipy
-torch
-torchvision
-torchaudio
+# Core dependencies
+torch>=2.0.0
+torchvision>=0.15.0
+numpy>=1.24.0
+
+# Image processing
+Pillow>=9.5.0
+
+# Data visualization
+matplotlib>=3.7.0
+
+# Progress bars
+tqdm>=4.65.0
+
+# Machine learning utilities
+scikit-learn>=1.2.0
+
+# For reproducibility (optional but recommended)
+# Install specific versions if needed for your environment
