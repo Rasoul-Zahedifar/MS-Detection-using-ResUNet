@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 # ------------------------------
 # Residual Block
@@ -86,11 +85,3 @@ class ResUNet(nn.Module):
         out = self.conv_last(d1)
         return out
 
-# ------------------------------
-# Example usage
-# ------------------------------
-if __name__ == "__main__":
-    model = ResUNet(in_channels=3, out_channels=1)
-    x = torch.randn(1, 3, 256, 256)
-    y = model(x)
-    

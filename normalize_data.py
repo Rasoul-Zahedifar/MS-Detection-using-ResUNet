@@ -1,11 +1,11 @@
+# normalize_data.py
 import os
 import nibabel as nib
 import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
 from scipy.ndimage import zoom
-from skimage import exposure
-
+from constants import train_image_dir, train_mask_dir
 # ------------------------------
 # Helper Functions
 # ------------------------------
@@ -85,10 +85,7 @@ class MSPreparedDataset(Dataset):
 # ------------------------------
 
 if __name__ == "__main__":
-    image_dir = "/path/to/MS/images"
-    mask_dir = "/path/to/MS/masks"
-
-    dataset = MSPreparedDataset(image_dir, mask_dir)
+    dataset = MSPreparedDataset(train_image_dir, train_mask_dir)
     loader = DataLoader(dataset, batch_size=2, shuffle=True)
 
     for imgs, masks in loader:
