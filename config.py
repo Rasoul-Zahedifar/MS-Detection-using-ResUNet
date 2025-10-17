@@ -89,7 +89,13 @@ RANDOM_SEED = 42
 # ===========================
 # Loss Configuration
 # ===========================
-LOSS_TYPE = 'combined'  # Options: 'bce', 'dice', 'combined'
+# Options: 'bce', 'dice', 'focal', 'combined', 'weighted_combined'
+# Use 'weighted_combined' for datasets with class imbalance (recommended for MS detection)
+LOSS_TYPE = 'weighted_combined'  
 DICE_WEIGHT = 0.5
 BCE_WEIGHT = 0.5
+
+# Focal Loss parameters (for class imbalance)
+FOCAL_ALPHA = 0.25  # Weight for positive class
+FOCAL_GAMMA = 2.0   # Focusing parameter
 

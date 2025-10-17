@@ -48,6 +48,47 @@ class DiceLoss(nn.Module):
         return 1 - dice_score
 
 
+class FocalLoss(nn.Module):
+    """
+    Focal Loss for addressing class imbalance
+    Focuses on hard examples by down-weighting easy ones
+    """
+    
+    def __init__(self, alpha=0.25, gamma=2.0, smooth=1e-6):
+        super(FocalLoss, self).__init__()
+        self.alpha = alpha
+        self.gamma = gamma
+        self.smooth = smooth
+    
+    def forward(self, predictions, targets):
+        """
+        Args:
+            predictions (torch.Tensor): Predicted probabilities (B, 1, H, W)
+            targets (torch.Tensor): Ground truth masks (B, 1, H, W)
+        
+        Returns:
+            torch.Tensor: Focal loss value
+        """
+        # Flatten tensors
+        predictions = predictions.view(-1)
+        targets = targets.view(-1)
+        
+        # Calculate BCE
+        bce = F.binary_cross_entropy(predictions, targets, reduction='none')
+        
+        # Calculate focal term
+        predictions_t = torch.where(targets == 1, predictions, 1 - predictions)
+        focal_weight = (1 - predictions_t) ** self.gamma
+        
+        # Calculate alpha weight
+        alpha_weight = torch.where(targets == 1, self.alpha, 1 - self.alpha)
+        
+        # Combine
+        focal_loss = alpha_weight * focal_weight * bce
+        
+        return focal_loss.mean()
+
+
 class CombinedLoss(nn.Module):
     """
     Combined Binary Cross Entropy and Dice Loss
@@ -67,12 +108,31 @@ class CombinedLoss(nn.Module):
         return self.bce_weight * bce_loss + self.dice_weight * dice_loss
 
 
+class WeightedCombinedLoss(nn.Module):
+    """
+    Combined Focal Loss and Dice Loss - Better for class imbalance
+    """
+    
+    def __init__(self, focal_weight=0.5, dice_weight=0.5, alpha=0.25, gamma=2.0):
+        super(WeightedCombinedLoss, self).__init__()
+        self.focal_weight = focal_weight
+        self.dice_weight = dice_weight
+        self.focal = FocalLoss(alpha=alpha, gamma=gamma)
+        self.dice = DiceLoss()
+    
+    def forward(self, predictions, targets):
+        focal_loss = self.focal(predictions, targets)
+        dice_loss = self.dice(predictions, targets)
+        
+        return self.focal_weight * focal_loss + self.dice_weight * dice_loss
+
+
 def get_loss_function(loss_type='combined'):
     """
     Get loss function based on configuration
     
     Args:
-        loss_type (str): Type of loss ('bce', 'dice', or 'combined')
+        loss_type (str): Type of loss ('bce', 'dice', 'focal', 'combined', or 'weighted_combined')
     
     Returns:
         Loss function
@@ -81,8 +141,13 @@ def get_loss_function(loss_type='combined'):
         return nn.BCELoss()
     elif loss_type == 'dice':
         return DiceLoss()
+    elif loss_type == 'focal':
+        return FocalLoss(alpha=0.25, gamma=2.0)
     elif loss_type == 'combined':
         return CombinedLoss(config.BCE_WEIGHT, config.DICE_WEIGHT)
+    elif loss_type == 'weighted_combined':
+        # Best for class imbalance - uses Focal Loss + Dice
+        return WeightedCombinedLoss(focal_weight=0.5, dice_weight=0.5, alpha=0.25, gamma=2.0)
     else:
         raise ValueError(f"Unknown loss type: {loss_type}")
 
