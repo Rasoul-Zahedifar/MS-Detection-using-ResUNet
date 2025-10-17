@@ -142,12 +142,17 @@ def get_loss_function(loss_type='combined'):
     elif loss_type == 'dice':
         return DiceLoss()
     elif loss_type == 'focal':
-        return FocalLoss(alpha=0.25, gamma=2.0)
+        return FocalLoss(alpha=config.FOCAL_ALPHA, gamma=config.FOCAL_GAMMA)
     elif loss_type == 'combined':
         return CombinedLoss(config.BCE_WEIGHT, config.DICE_WEIGHT)
     elif loss_type == 'weighted_combined':
         # Best for class imbalance - uses Focal Loss + Dice
-        return WeightedCombinedLoss(focal_weight=0.5, dice_weight=0.5, alpha=0.25, gamma=2.0)
+        return WeightedCombinedLoss(
+            focal_weight=0.5, 
+            dice_weight=0.5, 
+            alpha=config.FOCAL_ALPHA,  # Use config value
+            gamma=config.FOCAL_GAMMA   # Use config value
+        )
     else:
         raise ValueError(f"Unknown loss type: {loss_type}")
 

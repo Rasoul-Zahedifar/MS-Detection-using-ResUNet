@@ -69,4 +69,5 @@ coverage.xml
 
 # Dataset and test notebook
 dataset/
+dataset.zip
 test.ipynb

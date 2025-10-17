@@ -96,6 +96,7 @@ DICE_WEIGHT = 0.5
 BCE_WEIGHT = 0.5
 
 # Focal Loss parameters (for class imbalance)
-FOCAL_ALPHA = 0.25  # Weight for positive class
-FOCAL_GAMMA = 2.0   # Focusing parameter
+# Increased for severe class imbalance (1:246 ratio)
+FOCAL_ALPHA = 0.75  # Weight for positive class (increased from 0.25 for severe imbalance)
+FOCAL_GAMMA = 3.0   # Focusing parameter (increased from 2.0 for harder examples)
 
