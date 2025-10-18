@@ -323,15 +323,22 @@ def visualize_predictions(images, masks, predictions, num_samples=4, save_path=N
     
     for i in range(num_samples):
         # Convert to numpy and denormalize image
-        image = images[i].cpu().permute(1, 2, 0).numpy()
-        image = image * np.array(config.NORMALIZE_STD) + np.array(config.NORMALIZE_MEAN)
+        image = images[i].cpu().numpy()
+        if image.shape[0] == 1:
+            # Grayscale image
+            image = image[0]  # Remove channel dimension
+            image = image * config.NORMALIZE_STD[0] + config.NORMALIZE_MEAN[0]
+        else:
+            # RGB image
+            image = image.transpose(1, 2, 0)
+            image = image * np.array(config.NORMALIZE_STD) + np.array(config.NORMALIZE_MEAN)
         image = np.clip(image, 0, 1)
         
         mask = masks[i, 0].cpu().numpy()
         pred = predictions[i, 0].cpu().detach().numpy()
         
         # Plot image
-        axes[i, 0].imshow(image)
+        axes[i, 0].imshow(image, cmap='gray' if len(image.shape) == 2 else None)
         axes[i, 0].set_title('Input Image')
         axes[i, 0].axis('off')
         

@@ -29,7 +29,7 @@ os.makedirs(RESULTS_DIR, exist_ok=True)
 # Model Configuration
 # ===========================
 MODEL_NAME = 'ResUNet'
-IN_CHANNELS = 3  # RGB images
+IN_CHANNELS = 1  # Grayscale images
 OUT_CHANNELS = 1  # Binary segmentation mask
 FILTERS = [64, 128, 256, 512]  # Filter sizes for encoder
 
@@ -47,8 +47,8 @@ WEIGHT_DECAY = 1e-5
 
 # Image preprocessing
 IMAGE_SIZE = (256, 256)  # Target size for images
-NORMALIZE_MEAN = [0.485, 0.456, 0.406]  # ImageNet mean for RGB
-NORMALIZE_STD = [0.229, 0.224, 0.225]   # ImageNet std for RGB
+NORMALIZE_MEAN = [0.5]  # Mean for grayscale images
+NORMALIZE_STD = [0.5]   # Std for grayscale images
 
 # Data augmentation
 USE_AUGMENTATION = True

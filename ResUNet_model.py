@@ -59,12 +59,12 @@ class ResUNet(nn.Module):
         - Decoder: 4 transposed convolutions with skip connections
         
     Args:
-        in_channels (int): Number of input channels (3 for RGB)
+        in_channels (int): Number of input channels (1 for grayscale, 3 for RGB)
         out_channels (int): Number of output channels (1 for binary segmentation)
         filters (list): List of filter sizes for each encoder level
     """
     
-    def __init__(self, in_channels=3, out_channels=1, filters=[64, 128, 256, 512]):
+    def __init__(self, in_channels=1, out_channels=1, filters=[64, 128, 256, 512]):
         super(ResUNet, self).__init__()
         
         # ===========================

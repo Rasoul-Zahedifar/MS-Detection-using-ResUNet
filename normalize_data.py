@@ -56,7 +56,7 @@ class MSDataset(Dataset):
         mask_path = os.path.join(self.mask_dir, mask_name)
         
         # Load images
-        image = Image.open(img_path).convert('RGB')
+        image = Image.open(img_path).convert('L')  # Grayscale
         mask = Image.open(mask_path).convert('L')  # Grayscale
         
         # Apply augmentation if enabled
@@ -125,15 +125,12 @@ class MSDataset(Dataset):
             image = TF.rotate(image, angle)
             mask = TF.rotate(mask, angle)
         
-        # Random brightness, contrast, saturation (only for image)
+        # Random brightness and contrast (only for image, no saturation for grayscale)
         if random.random() > 0.5:
             image = TF.adjust_brightness(image, brightness_factor=random.uniform(0.8, 1.2))
         
         if random.random() > 0.5:
             image = TF.adjust_contrast(image, contrast_factor=random.uniform(0.8, 1.2))
-        
-        if random.random() > 0.5:
-            image = TF.adjust_saturation(image, saturation_factor=random.uniform(0.8, 1.2))
         
         return image, mask
 
