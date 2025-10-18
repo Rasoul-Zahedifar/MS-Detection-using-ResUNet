@@ -217,7 +217,7 @@ Combined loss function:
 Key configuration parameters in `config.py`:
 
 ### Model Parameters
-- `IN_CHANNELS`: 3 (RGB images)
+- `IN_CHANNELS`: 1 
 - `OUT_CHANNELS`: 1 (binary mask)
 - `FILTERS`: [64, 128, 256, 512]
 
@@ -267,7 +267,7 @@ Edit `ResUNet_model.py` to change the network architecture:
 
 ```python
 model = ResUNet(
-    in_channels=3,
+    in_channels=1,
     out_channels=1,
     filters=[32, 64, 128, 256]  # Smaller model
 )
