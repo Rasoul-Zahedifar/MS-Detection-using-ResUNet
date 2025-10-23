@@ -40,7 +40,8 @@ FILTERS = [64, 128, 256, 512]  # Filter sizes for encoder
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # Hyperparameters
-BATCH_SIZE = 8
+BATCH_SIZE = 8  # Physical batch size (fits in memory)
+GRADIENT_ACCUMULATION_STEPS = 2  # Effective batch size = 8 * 2 = 16
 NUM_EPOCHS = 50
 LEARNING_RATE = 1e-4
 WEIGHT_DECAY = 1e-5

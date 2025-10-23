@@ -92,6 +92,9 @@ class Trainer:
         running_loss = 0.0
         running_dice = 0.0
         
+        # Gradient accumulation steps
+        accumulation_steps = getattr(config, 'GRADIENT_ACCUMULATION_STEPS', 1)
+        
         # Progress bar
         pbar = tqdm(self.train_loader, desc=f'Epoch {self.current_epoch + 1} [Train]')
         
@@ -100,40 +103,46 @@ class Trainer:
             images = images.to(self.device)
             masks = masks.to(self.device)
             
-            # Zero gradients
-            self.optimizer.zero_grad()
-            
             # Forward pass
             outputs = self.model(images)
             
             # Calculate loss
             loss = self.criterion(outputs, masks)
             
+            # Normalize loss for gradient accumulation
+            loss = loss / accumulation_steps
+            
             # Backward pass
             loss.backward()
             
-            # Gradient clipping
-            if config.USE_GRADIENT_CLIPPING:
-                torch.nn.utils.clip_grad_norm_(
-                    self.model.parameters(), 
-                    config.MAX_GRAD_NORM
-                )
-            
-            # Update weights
-            self.optimizer.step()
+            # Update weights only every accumulation_steps
+            if (batch_idx + 1) % accumulation_steps == 0:
+                # Gradient clipping
+                if config.USE_GRADIENT_CLIPPING:
+                    torch.nn.utils.clip_grad_norm_(
+                        self.model.parameters(), 
+                        config.MAX_GRAD_NORM
+                    )
+                
+                # Update weights
+                self.optimizer.step()
+                
+                # Zero gradients
+                self.optimizer.zero_grad()
             
             # Calculate metrics
             with torch.no_grad():
                 metrics = calculate_metrics(outputs, masks)
             
-            # Update statistics
-            running_loss += loss.item()
+            # Update statistics (use unnormalized loss for display)
+            running_loss += loss.item() * accumulation_steps
             running_dice += metrics['dice']
             
             # Update progress bar
             pbar.set_postfix({
-                'loss': f"{loss.item():.4f}",
-                'dice': f"{metrics['dice']:.4f}"
+                'loss': f"{loss.item() * accumulation_steps:.4f}",
+                'dice': f"{metrics['dice']:.4f}",
+                'eff_bs': f"{config.BATCH_SIZE * accumulation_steps}"
             })
         
         # Calculate averages
