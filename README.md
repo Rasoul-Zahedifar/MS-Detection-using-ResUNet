@@ -278,7 +278,7 @@ model = ResUNet(
 Edit `config.py` or pass command-line arguments:
 
 ```bash
-python main.py --mode train --batch-size 16 --epochs 100 --lr 0.0001
+python main.py --mode train --batch-size 8 --epochs 100 --lr 0.0001
 ```
 
 ### Custom Loss Function

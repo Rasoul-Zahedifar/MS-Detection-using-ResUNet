@@ -5,6 +5,7 @@ Provides convenient interface for loading train/val/test datasets
 from torch.utils.data import DataLoader
 from normalize_data import MSDataset
 import config
+import os
 
 
 class MSDataFetcher:
@@ -30,7 +31,7 @@ class MSDataFetcher:
         self.batch_size = batch_size or config.BATCH_SIZE
         self.image_size = image_size or config.IMAGE_SIZE
         self.use_augmentation = use_augmentation if use_augmentation is not None else config.USE_AUGMENTATION
-        self.num_workers = num_workers
+        self.num_workers = num_workers or os.cpu_count() // 2
         
         self.datasets = {}
         self.loaders = {}
@@ -78,7 +79,7 @@ class MSDataFetcher:
             batch_size=self.batch_size,
             shuffle=True,
             num_workers=self.num_workers,
-            pin_memory=True if config.DEVICE.type == 'cuda' else False,
+            pin_memory = config.DEVICE.type.startswith("cuda"),
             drop_last=True  # Drop last incomplete batch
         )
         

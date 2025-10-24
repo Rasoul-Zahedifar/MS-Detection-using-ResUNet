@@ -132,7 +132,7 @@ class Trainer:
             
             # Calculate metrics
             with torch.no_grad():
-                metrics = calculate_metrics(outputs, masks)
+                metrics = calculate_metrics(torch.sigmoid(outputs), masks)
             
             # Update statistics (use unnormalized loss for display)
             running_loss += loss.item() * accumulation_steps
@@ -185,7 +185,7 @@ class Trainer:
                 loss = self.criterion(outputs, masks)
                 
                 # Calculate metrics
-                metrics = calculate_metrics(outputs, masks)
+                metrics = calculate_metrics(torch.sigmoid(outputs), masks)
                 
                 # Update statistics
                 running_loss += loss.item()
