@@ -78,7 +78,6 @@ class Evaluator:
                 outputs = self.model(images)
                 
                 # Calculate metrics for batch
-                outputs = torch.sigmoid(outputs)
                 batch_metrics = calculate_metrics(outputs, masks)
                 
                 # Store metrics
@@ -178,7 +177,6 @@ class Evaluator:
             prediction = self.model(image)
             
             # Calculate metrics
-            prediction = torch.sigmoid(prediction)
             metrics = calculate_metrics(prediction, mask)
             
             # Visualize if requested
@@ -229,7 +227,7 @@ class Evaluator:
                 outputs = self.model(images)
                 
                 # Binarize predictions
-                pred_binary = (torch.sigmoid(outputs) > config.THRESHOLD).float()
+                pred_binary = (outputs > config.THRESHOLD).float()
                 
                 # Update statistics
                 batch_size = images.shape[0]

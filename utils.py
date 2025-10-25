@@ -26,17 +26,26 @@ class DiceLoss(nn.Module):
         super(DiceLoss, self).__init__()
         self.smooth = smooth
     
-    def forward(self, logits, targets):
-        probs = torch.sigmoid(logits)
-        probs = probs.contiguous().view(-1)
-        targets = targets.contiguous().view(-1)
-
-        intersection = (probs * targets).sum()
-        dice = (2. * intersection + self.smooth) / (
-            probs.sum() + targets.sum() + self.smooth
+    def forward(self, predictions, targets):
+        """
+        Args:
+            predictions (torch.Tensor): Predicted probabilities (B, 1, H, W)
+            targets (torch.Tensor): Ground truth masks (B, 1, H, W)
+        
+        Returns:
+            torch.Tensor: Dice loss value
+        """
+        # Flatten tensors
+        predictions = predictions.view(-1)
+        targets = targets.view(-1)
+        
+        # Calculate intersection and union
+        intersection = (predictions * targets).sum()
+        dice_score = (2. * intersection + self.smooth) / (
+            predictions.sum() + targets.sum() + self.smooth
         )
-        return 1 - dice
-
+        
+        return 1 - dice_score
 
 class FocalLoss(nn.Module):
     """
@@ -50,19 +59,33 @@ class FocalLoss(nn.Module):
         self.gamma = gamma
         self.smooth = smooth
     
-    def forward(self, logits, targets):
-        bce_loss = F.binary_cross_entropy_with_logits(
-            logits, targets, reduction='none'
-        )
-
-        probs = torch.sigmoid(logits)
-        pt = torch.where(targets == 1, probs, 1 - probs)
-
-        focal_weight = (1 - pt) ** self.gamma
+    def forward(self, predictions, targets):
+        """
+        Args:
+            predictions (torch.Tensor): Predicted probabilities (B, 1, H, W)
+            targets (torch.Tensor): Ground truth masks (B, 1, H, W)
+        
+        Returns:
+            torch.Tensor: Focal loss value
+        """
+        # Flatten tensors
+        predictions = predictions.view(-1)
+        targets = targets.view(-1)
+        
+        # Calculate BCE
+        bce = F.binary_cross_entropy(predictions, targets, reduction='none')
+        
+        # Calculate focal term
+        predictions_t = torch.where(targets == 1, predictions, 1 - predictions)
+        focal_weight = (1 - predictions_t) ** self.gamma
+        
+        # Calculate alpha weight
         alpha_weight = torch.where(targets == 1, self.alpha, 1 - self.alpha)
-
-        return (alpha_weight * focal_weight * bce_loss).mean()
-
+        
+        # Combine
+        focal_loss = alpha_weight * focal_weight * bce
+        
+        return focal_loss.mean()
 
 
 class CombinedLoss(nn.Module):
@@ -74,12 +97,15 @@ class CombinedLoss(nn.Module):
         super(CombinedLoss, self).__init__()
         self.bce_weight = bce_weight
         self.dice_weight = dice_weight
-        self.bce = nn.BCEWithLogitsLoss()
+        self.bce = nn.BCELoss()
         self.dice = DiceLoss()
     
-    def forward(self, logits, targets):
-        return self.bce_weight * self.bce(logits, targets) + \
-               self.dice_weight * self.dice(logits, targets)
+    def forward(self, predictions, targets):
+        bce_loss = self.bce(predictions, targets)
+        dice_loss = self.dice(predictions, targets)
+        
+        return self.bce_weight * bce_loss + self.dice_weight * dice_loss
+
 
 
 
@@ -95,10 +121,12 @@ class WeightedCombinedLoss(nn.Module):
         self.focal = FocalLoss(alpha=alpha, gamma=gamma)
         self.dice = DiceLoss()
     
-    def forward(self, logits, targets):
-        focal = self.focal(logits, targets)
-        dice = self.dice(logits, targets)
-        return self.focal_weight * focal + self.dice_weight * dice
+    def forward(self, predictions, targets):
+        focal_loss = self.focal(predictions, targets)
+        dice_loss = self.dice(predictions, targets)
+        
+        return self.focal_weight * focal_loss + self.dice_weight * dice_loss
+
 
 
 def get_loss_function(loss_type='combined'):
@@ -112,7 +140,7 @@ def get_loss_function(loss_type='combined'):
         Loss function
     """
     if loss_type == 'bce':
-        return nn.BCEWithLogitsLoss()
+        return nn.BCELoss()
     elif loss_type == 'dice':
         return DiceLoss()
     elif loss_type == 'focal':
@@ -182,14 +210,15 @@ def iou_score(predictions, targets, threshold=0.5, smooth=1e-6):
     predictions = predictions.view(-1)
     targets = targets.view(-1)
     
-    # Calculate intersection and union
+    # Calculate intersection
     intersection = (predictions * targets).sum()
-    union = predictions.sum() + targets.sum() - intersection
     
-    # Calculate IoU
-    iou = (intersection + smooth) / (union + smooth)
+    # Calculate Dice coefficient
+    dice = (2. * intersection + smooth) / (
+        predictions.sum() + targets.sum() + smooth
+    )
     
-    return iou.item()
+    return dice.item()
 
 
 def pixel_accuracy(predictions, targets, threshold=0.5):
