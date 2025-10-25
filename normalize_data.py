@@ -54,13 +54,14 @@ class MSDataset(Dataset):
         # Find corresponding mask - handle different naming patterns
         mask_name = self._find_matching_mask(self.image_files[idx])
         mask_path = os.path.join(self.mask_dir, mask_name)
-        
+        assert os.path.exists(mask_path), f"No mask found for: {img_path}"
+
         # Load images
-        image = Image.open(img_path).convert('L')  # Grayscale
-        mask = Image.open(mask_path).convert('L')  # Grayscale
+        image = Image.open(img_path).convert('1')  # Grayscale
+        mask = Image.open(mask_path).convert('1')  # Grayscale
         
         # Apply augmentation if enabled
-        if self.augment and random.random() < config.AUGMENTATION_PROB:
+        if self.augment:
             image, mask = self._apply_augmentation(image, mask)
         
         # Resize to target size
@@ -105,34 +106,80 @@ class MSDataset(Dataset):
         # Default: return the mask at the same index
         return self.mask_files[self.image_files.index(image_filename)]
     
+    def _to_pil_gray(self, x):
+        """Convert PIL/ndarray/tensor to PIL Image in mode 'L' (grayscale)."""
+        # If it's already a PIL Image, convert to 'L'
+        if isinstance(x, Image.Image):
+            return x.convert('L')
+        # If it's a torch Tensor: assume (1,H,W) or (H,W)
+        if isinstance(x, torch.Tensor):
+            arr = x.detach().cpu().numpy()
+            # squeeze channel dim if present
+            if arr.ndim == 3 and arr.shape[0] == 1:
+                arr = arr.squeeze(0)
+            # If float in [0,1], scale to [0,255]
+            if np.issubdtype(arr.dtype, np.floating):
+                arr = (arr * 255.0).clip(0, 255).astype(np.uint8)
+            else:
+                arr = arr.astype(np.uint8)
+            return Image.fromarray(arr, mode='L')
+        # If numpy array
+        if isinstance(x, np.ndarray):
+            arr = x
+            if arr.ndim == 3 and arr.shape[0] == 1:
+                arr = arr.squeeze(0)
+            if np.issubdtype(arr.dtype, np.floating):
+                arr = (arr * 255.0).clip(0, 255).astype(np.uint8)
+            else:
+                arr = arr.astype(np.uint8)
+            return Image.fromarray(arr, mode='L')
+
+        raise TypeError(f"Unsupported image type: {type(x)}")
+
     def _apply_augmentation(self, image, mask):
         """
-        Apply random augmentations to image and mask
+        Robust augmentation that returns PIL Images (mode 'L').
+
+        Expected inputs: PIL Image, numpy array, or torch.Tensor.
+        Returns: (image_pil, mask_pil)
         """
-        # Random horizontal flip
-        if random.random() > 0.5:
-            image = TF.hflip(image)
-            mask = TF.hflip(mask)
-        
-        # Random vertical flip
-        if random.random() > 0.5:
-            image = TF.vflip(image)
-            mask = TF.vflip(mask)
-        
-        # Random rotation (±15 degrees)
-        if random.random() > 0.5:
+        # --- convert inputs to PIL grayscale ---
+        image_pil = self._to_pil_gray(image)
+        mask_pil = self._to_pil_gray(mask)
+
+        # --- Resize first (optional) ---
+        # If you prefer augmentation at the target resolution, you can resize here:
+        # image_pil = image_pil.resize(self.image_size, resample=Image.BILINEAR)
+        # mask_pil  = mask_pil.resize(self.image_size, resample=Image.NEAREST)
+
+        # --- Random horizontal/vertical flips ---
+        if random.random() < 0.5:
+            image_pil = TF.hflip(image_pil)
+            mask_pil = TF.hflip(mask_pil)
+        if random.random() < 0.5:
+            image_pil = TF.vflip(image_pil)
+            mask_pil = TF.vflip(mask_pil)
+
+        # --- Random rotation (use small angles; use nearest for mask) ---
+        if random.random() < 0.5:
             angle = random.uniform(-15, 15)
-            image = TF.rotate(image, angle)
-            mask = TF.rotate(mask, angle)
-        
-        # Random brightness and contrast (only for image, no saturation for grayscale)
-        if random.random() > 0.5:
-            image = TF.adjust_brightness(image, brightness_factor=random.uniform(0.8, 1.2))
-        
-        if random.random() > 0.5:
-            image = TF.adjust_contrast(image, contrast_factor=random.uniform(0.8, 1.2))
-        
-        return image, mask
+            # torchvision supports interpolation argument in recent versions
+            try:
+                image_pil = TF.rotate(image_pil, angle, interpolation=Image.BILINEAR)
+                mask_pil = TF.rotate(mask_pil, angle, interpolation=Image.NEAREST)
+            except TypeError:
+                # older torchvision uses 'resample' keyword
+                image_pil = TF.rotate(image_pil, angle, resample=Image.BILINEAR)
+                mask_pil = TF.rotate(mask_pil, angle, resample=Image.NEAREST)
+
+        # --- Intensity augmentations (image only) ---
+        if random.random() < 0.5:
+            image_pil = TF.adjust_brightness(image_pil, random.uniform(0.8, 1.2))
+        if random.random() < 0.5:
+            image_pil = TF.adjust_contrast(image_pil, random.uniform(0.8, 1.2))
+
+        # Return PIL images — the rest of your pipeline will call TF.resize and TF.to_tensor
+        return image_pil, mask_pil
 
 
 def get_data_stats(dataset, num_samples=100):
