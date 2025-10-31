@@ -173,13 +173,19 @@ class Trainer:
         pbar = tqdm(self.val_loader, desc=f'Epoch {self.current_epoch + 1} [Val]')
         
         with torch.no_grad():
-            for images, masks in pbar:
+            for batch_idx, (images, masks) in enumerate(pbar):
                 # Move data to device
                 images = images.to(self.device)
                 masks = masks.to(self.device)
                 
                 # Forward pass
                 outputs = self.model(images)
+                
+                if self.current_epoch < 3 and batch_idx == 0:
+                    with torch.no_grad():
+                        outs = outputs.detach()
+                        print(f"[sanity] outs range: [{outs.min().item():.3f}, {outs.max().item():.3f}]  "
+                            f"pos_rate@(0.5): {((torch.sigmoid(outs) > 0.5).float().mean().item()):.4f}")
                 
                 # Calculate loss
                 loss = self.criterion(outputs, masks)
@@ -228,7 +234,18 @@ class Trainer:
             
             # Validate
             val_loss, val_dice, val_metrics = self.validate()
-            
+            if val_loss < self.best_val_loss - 1e-6:
+                self.best_val_loss = val_loss
+                save_checkpoint(self.model, self.optimizer, epoch + 1, val_loss, val_metrics,
+                                os.path.join(config.CHECKPOINT_DIR, 'best_by_loss.pth'))
+                print(f"  >> Saved best_by_loss model (ValLoss: {val_loss:.4f})")
+
+            # Save best by DICE (higher is better now)
+            if val_dice > self.best_val_dice + 1e-6:
+                self.best_val_dice = val_dice
+                save_checkpoint(self.model, self.optimizer, epoch + 1, val_loss, val_metrics,
+                                os.path.join(config.CHECKPOINT_DIR, 'best_by_dice.pth'))
+                print(f"  >> Saved best_by_dice model (Dice: {val_dice:.4f})")
             # Update history
             self.history['train_loss'].append(train_loss)
             self.history['val_loss'].append(val_loss)

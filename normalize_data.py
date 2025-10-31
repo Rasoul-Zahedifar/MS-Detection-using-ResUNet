@@ -57,8 +57,8 @@ class MSDataset(Dataset):
         assert os.path.exists(mask_path), f"No mask found for: {img_path}"
 
         # Load images
-        image = Image.open(img_path).convert('1')  # Grayscale
-        mask = Image.open(mask_path).convert('1')  # Grayscale
+        image = Image.open(img_path).convert('L')
+        mask = Image.open(mask_path).convert('L')
         
         # Apply augmentation if enabled
         if self.augment:
