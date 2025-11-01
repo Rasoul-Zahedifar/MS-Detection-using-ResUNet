@@ -4,6 +4,7 @@ Handles model training with validation and checkpoint saving
 """
 import torch
 import torch.optim as optim
+from torch.cuda.amp import autocast, GradScaler
 from tqdm import tqdm
 import os
 import time
@@ -62,6 +63,12 @@ class Trainer:
             'learning_rate': []
         }
         
+        # Mixed precision training
+        self.use_amp = getattr(config, 'USE_MIXED_PRECISION', False) and device.type == 'cuda'
+        self.scaler = GradScaler() if self.use_amp else None
+        if self.use_amp:
+            print("  >> Mixed Precision Training (AMP) enabled")
+        
         # Learning rate scheduler
         if config.USE_LR_SCHEDULER:
             self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
@@ -103,29 +110,51 @@ class Trainer:
             images = images.to(self.device)
             masks = masks.to(self.device)
             
-            # Forward pass
-            outputs = self.model(images)
-            
-            # Calculate loss
-            loss = self.criterion(outputs, masks)
-            
-            # Normalize loss for gradient accumulation
-            loss = loss / accumulation_steps
+            # Mixed precision forward pass
+            if self.use_amp:
+                with autocast():
+                    # Forward pass
+                    outputs = self.model(images)
+                    # Calculate loss
+                    loss = self.criterion(outputs, masks)
+                    # Normalize loss for gradient accumulation
+                    loss = loss / accumulation_steps
+            else:
+                # Forward pass
+                outputs = self.model(images)
+                # Calculate loss
+                loss = self.criterion(outputs, masks)
+                # Normalize loss for gradient accumulation
+                loss = loss / accumulation_steps
             
             # Backward pass
-            loss.backward()
+            if self.use_amp:
+                self.scaler.scale(loss).backward()
+            else:
+                loss.backward()
             
             # Update weights only every accumulation_steps
             if (batch_idx + 1) % accumulation_steps == 0:
-                # Gradient clipping
-                if config.USE_GRADIENT_CLIPPING:
-                    torch.nn.utils.clip_grad_norm_(
-                        self.model.parameters(), 
-                        config.MAX_GRAD_NORM
-                    )
-                
-                # Update weights
-                self.optimizer.step()
+                if self.use_amp:
+                    # Gradient clipping with AMP
+                    if config.USE_GRADIENT_CLIPPING:
+                        self.scaler.unscale_(self.optimizer)
+                        torch.nn.utils.clip_grad_norm_(
+                            self.model.parameters(), 
+                            config.MAX_GRAD_NORM
+                        )
+                    # Update weights
+                    self.scaler.step(self.optimizer)
+                    self.scaler.update()
+                else:
+                    # Gradient clipping
+                    if config.USE_GRADIENT_CLIPPING:
+                        torch.nn.utils.clip_grad_norm_(
+                            self.model.parameters(), 
+                            config.MAX_GRAD_NORM
+                        )
+                    # Update weights
+                    self.optimizer.step()
                 
                 # Zero gradients
                 self.optimizer.zero_grad()
@@ -142,7 +171,7 @@ class Trainer:
             pbar.set_postfix({
                 'loss': f"{loss.item() * accumulation_steps:.4f}",
                 'dice': f"{metrics['dice']:.4f}",
-                'eff_bs': f"{config.BATCH_SIZE * accumulation_steps}"
+                'bs': f"{config.BATCH_SIZE}"
             })
         
         # Calculate averages
@@ -178,17 +207,23 @@ class Trainer:
                 images = images.to(self.device)
                 masks = masks.to(self.device)
                 
-                # Forward pass
-                outputs = self.model(images)
+                # Mixed precision forward pass
+                if self.use_amp:
+                    with autocast():
+                        # Forward pass
+                        outputs = self.model(images)
+                        # Calculate loss
+                        loss = self.criterion(outputs, masks)
+                else:
+                    # Forward pass
+                    outputs = self.model(images)
+                    # Calculate loss
+                    loss = self.criterion(outputs, masks)
                 
                 if self.current_epoch < 3 and batch_idx == 0:
-                    with torch.no_grad():
-                        outs = outputs.detach()
-                        print(f"[sanity] outs range: [{outs.min().item():.3f}, {outs.max().item():.3f}]  "
-                            f"pos_rate@(0.5): {((torch.sigmoid(outs) > 0.5).float().mean().item()):.4f}")
-                
-                # Calculate loss
-                loss = self.criterion(outputs, masks)
+                    outs = outputs.detach()
+                    print(f"[sanity] outs range: [{outs.min().item():.3f}, {outs.max().item():.3f}]  "
+                        f"pos_rate@(0.5): {((torch.sigmoid(outs) > 0.5).float().mean().item()):.4f}")
                 
                 # Calculate metrics
                 metrics = calculate_metrics(outputs, masks)
