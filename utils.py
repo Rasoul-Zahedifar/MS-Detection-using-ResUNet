@@ -294,7 +294,7 @@ def load_checkpoint(model, optimizer, filepath, device):
     Returns:
         tuple: (model, optimizer, epoch, loss, metrics)
     """
-    checkpoint = torch.load(filepath, map_location=device)
+    checkpoint = torch.load(filepath, map_location=device, weights_only=False)
     
     model.load_state_dict(checkpoint['model_state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
