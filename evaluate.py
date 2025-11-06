@@ -6,7 +6,12 @@ import torch
 import numpy as np
 from tqdm import tqdm
 import os
+import sys
 import json
+
+# Add current directory to path for imports (works in both Colab and local)
+if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import config
 from ResUNet_model import ResUNet
@@ -278,6 +283,16 @@ def evaluate_model(checkpoint_path=None, split='test'):
     if not os.path.exists(checkpoint_path):
         raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
     
+    # Extract model name from checkpoint path and create results subdirectory
+    checkpoint_filename = os.path.basename(checkpoint_path)
+    model_name = os.path.splitext(checkpoint_filename)[0]  # Remove .pth extension
+    model_results_dir = os.path.join(config.RESULTS_DIR, model_name)
+    os.makedirs(model_results_dir, exist_ok=True)
+    
+    # Update config.RESULTS_DIR temporarily for this evaluation
+    original_results_dir = config.RESULTS_DIR
+    config.RESULTS_DIR = model_results_dir
+    
     # Create data loader
     print("Loading data...")
     data_fetcher = MSDataFetcher(
@@ -331,6 +346,9 @@ def evaluate_model(checkpoint_path=None, split='test'):
     print(f"Samples with lesions (Pred): {stats['predictions_with_lesions']}")
     print(f"Average predicted coverage: {stats['avg_predicted_coverage']:.4f}")
     print("=" * 60)
+    
+    # Restore original RESULTS_DIR
+    config.RESULTS_DIR = original_results_dir
     
     return avg_metrics, std_metrics
 

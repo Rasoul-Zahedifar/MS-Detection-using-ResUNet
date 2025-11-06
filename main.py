@@ -6,9 +6,11 @@ import argparse
 import os
 import sys
 
+# Add current directory to path for imports (works in both Colab and local)
+if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 import config
-from train import train_model
-from evaluate import evaluate_model
 
 
 def parse_args():
@@ -37,15 +39,21 @@ Examples:
   
   # Evaluate on validation set
   python main.py --mode evaluate --split val
+  
+  # Predict on a single image
+  python main.py --mode predict --input path/to/image.png --checkpoint checkpoints/best_by_dice.pth
+  
+  # Predict on a folder of images
+  python main.py --mode predict --input path/to/images/ --checkpoint checkpoints/best_by_loss.pth
         """
     )
     
     parser.add_argument(
         '--mode',
         type=str,
-        choices=['train', 'evaluate', 'info'],
+        choices=['train', 'evaluate', 'predict', 'info'],
         required=True,
-        help='Mode to run: train, evaluate, or info'
+        help='Mode to run: train, evaluate, predict, or info'
     )
     
     parser.add_argument(
@@ -89,6 +97,27 @@ Examples:
         type=float,
         default=None,
         help=f'Learning rate (default: {config.LEARNING_RATE})'
+    )
+    
+    parser.add_argument(
+        '--input',
+        type=str,
+        default=None,
+        help='Path to input image or folder for prediction mode'
+    )
+    
+    parser.add_argument(
+        '--output',
+        type=str,
+        default=None,
+        help='Output directory for predictions'
+    )
+    
+    parser.add_argument(
+        '--threshold',
+        type=float,
+        default=0.5,
+        help='Threshold for binary segmentation in prediction mode (default: 0.5)'
     )
     
     return parser.parse_args()
@@ -180,6 +209,8 @@ def main():
         print_config_info()
     
     elif args.mode == 'train':
+        from train import train_model
+        
         print_config_info()
         print("\n" + "=" * 80)
         print("Starting Training")
@@ -204,6 +235,8 @@ def main():
             raise
     
     elif args.mode == 'evaluate':
+        from evaluate import evaluate_model
+        
         print_config_info()
         print("\n" + "=" * 80)
         print("Starting Evaluation")
@@ -229,6 +262,113 @@ def main():
         except Exception as e:
             print("\n" + "=" * 80)
             print(f"Evaluation failed with error: {str(e)}")
+            print("=" * 80)
+            raise
+    
+    elif args.mode == 'predict':
+        from predict import load_model, predict_on_image, predict_on_folder
+        
+        if args.input is None:
+            print("\n" + "=" * 80)
+            print("Error: --input argument is required for prediction mode")
+            print("Please provide a path to an image or folder using --input")
+            print("=" * 80)
+            sys.exit(1)
+        
+        if args.checkpoint is None:
+            print("\n" + "=" * 80)
+            print("Error: --checkpoint argument is required for prediction mode")
+            print("Please provide a path to a model checkpoint using --checkpoint")
+            print("=" * 80)
+            sys.exit(1)
+        
+        if not os.path.exists(args.input):
+            print("\n" + "=" * 80)
+            print(f"Error: Input path does not exist: {args.input}")
+            print("=" * 80)
+            sys.exit(1)
+        
+        if not os.path.exists(args.checkpoint):
+            print("\n" + "=" * 80)
+            print(f"Error: Checkpoint not found: {args.checkpoint}")
+            print("=" * 80)
+            sys.exit(1)
+        
+        # Determine output directory
+        if args.output is None:
+            checkpoint_filename = os.path.basename(args.checkpoint)
+            model_name = os.path.splitext(checkpoint_filename)[0]
+            output_dir = os.path.join(config.RESULTS_DIR, f"{model_name}_predictions")
+        else:
+            output_dir = args.output
+        
+        os.makedirs(output_dir, exist_ok=True)
+        
+        print("=" * 80)
+        print("Starting Prediction")
+        print("=" * 80)
+        print(f"Input: {args.input}")
+        print(f"Checkpoint: {args.checkpoint}")
+        print(f"Output directory: {output_dir}")
+        print(f"Threshold: {args.threshold}")
+        print("=" * 80 + "\n")
+        
+        try:
+            import numpy as np
+            import json
+            
+            # Load model
+            print("Loading model...")
+            model = load_model(args.checkpoint, config.DEVICE)
+            
+            # Check if input is file or folder
+            if os.path.isfile(args.input):
+                print("\nRunning prediction on single image...")
+                stats = predict_on_image(model, args.input, output_dir, config.DEVICE, args.threshold)
+                all_stats = [stats]
+                
+                print("\nPrediction Statistics:")
+                print("=" * 80)
+                print(f"Lesion pixels: {stats['lesion_pixels']}/{stats['total_pixels']}")
+                print(f"Lesion coverage: {stats['lesion_percentage']:.2f}%")
+                print(f"Max probability: {stats['max_probability']:.4f}")
+                print(f"Mean probability: {stats['mean_probability']:.4f}")
+                print(f"Has lesions: {stats['has_lesions']}")
+                print("=" * 80)
+                
+            elif os.path.isdir(args.input):
+                print("\nRunning prediction on folder...")
+                all_stats = predict_on_folder(model, args.input, output_dir, config.DEVICE, args.threshold)
+                
+                if all_stats:
+                    print("\nSummary Statistics:")
+                    print("=" * 80)
+                    print(f"Total images processed: {len(all_stats)}")
+                    
+                    images_with_lesions = sum(1 for s in all_stats if s['has_lesions'])
+                    print(f"Images with lesions: {images_with_lesions}/{len(all_stats)} ({100*images_with_lesions/len(all_stats):.1f}%)")
+                    
+                    avg_coverage = np.mean([s['lesion_percentage'] for s in all_stats])
+                    print(f"Average lesion coverage: {avg_coverage:.2f}%")
+                    
+                    avg_max_prob = np.mean([s['max_probability'] for s in all_stats])
+                    print(f"Average max probability: {avg_max_prob:.4f}")
+                    print("=" * 80)
+            
+            # Save statistics to JSON
+            stats_path = os.path.join(output_dir, 'prediction_statistics.json')
+            with open(stats_path, 'w') as f:
+                json.dump(all_stats, f, indent=4)
+            print(f"\nStatistics saved to {stats_path}")
+            
+            print("\n" + "=" * 80)
+            print("Prediction completed successfully!")
+            print(f"Results saved to: {output_dir}")
+            print("=" * 80)
+            
+        except Exception as e:
+            print("\n" + "=" * 80)
+            print(f"Prediction failed with error: {str(e)}")
             print("=" * 80)
             raise
 

@@ -72,3 +72,4 @@ dataset/
 dataset.zip
 test.ipynb
 checkpoints/
+results/

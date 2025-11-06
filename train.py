@@ -6,7 +6,12 @@ import torch
 import torch.optim as optim
 from tqdm import tqdm
 import os
+import sys
 import time
+
+# Add current directory to path for imports (works in both Colab and local)
+if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import config
 from ResUNet_model import ResUNet, count_parameters
