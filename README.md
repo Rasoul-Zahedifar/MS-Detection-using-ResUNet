@@ -250,14 +250,61 @@ After training, results are saved in the `results/` directory:
 - `test_predictions.png`: Sample predictions on test set
 - `test_results.json`: Detailed evaluation metrics
 
+### Results Analysis & Visualization
+
+To generate comprehensive visualizations, plots, tables, and reports from your test results, run:
+
+```bash
+python3 analyze_results.py
+```
+
+This will automatically generate:
+- **10+ visualization plots** (distributions, comparisons, correlations, etc.)
+- **Statistical tables** (CSV format)
+- **Comprehensive markdown report** with analysis and recommendations
+
+#### Generated Files:
+
+**📁 `results/visualizations/`** - All plots and tables:
+- `comprehensive_report.png` - **Main multi-panel report** ⭐ (use this for presentations!)
+- `metric_comparison_bar.png` - Model comparison bar chart
+- `metric_distributions.png` - Distribution histograms for all metrics
+- `metric_boxplots.png` - Box plots showing metric variations
+- `correlation_heatmap.png` - Correlation matrix between metrics
+- `scatter_plots.png` - Relationship plots between metrics
+- `performance_categories.png` - Performance tier distribution
+- `percentile_analysis.png` - Percentile breakdown
+- `model_comparison.csv` - Detailed comparison table
+- `statistical_summary.csv` - Statistical summary
+
+**📄 `results/RESULTS_REPORT.md`** - Detailed markdown report with:
+- Executive summary
+- Model comparison (best by Dice vs best by Loss)
+- Detailed metrics analysis with interpretations
+- Statistical analysis (distributions, correlations, outliers)
+- Performance categories breakdown
+- Key findings and insights
+- Recommendations for improvement
+
+#### Individual Analysis Scripts:
+
+If needed, you can also run components separately:
+```bash
+# Generate only visualizations
+python3 visualize_results.py
+
+# Generate only markdown report
+python3 generate_report.py
+```
+
 ### Evaluation Metrics
 
 The model is evaluated using:
-- **Dice Coefficient**: Overlap between prediction and ground truth
+- **Dice Coefficient**: Overlap between prediction and ground truth (0=no overlap, 1=perfect)
 - **IoU (Jaccard Index)**: Intersection over union
 - **Pixel Accuracy**: Percentage of correctly classified pixels
-- **Sensitivity**: True positive rate (recall)
-- **Specificity**: True negative rate
+- **Sensitivity (Recall)**: True positive rate - ability to detect lesions
+- **Specificity**: True negative rate - ability to avoid false positives
 
 ## 🔧 Customization
 
