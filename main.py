@@ -45,15 +45,18 @@ Examples:
   
   # Predict on a folder of images
   python main.py --mode predict --input path/to/images/ --checkpoint checkpoints/best_by_loss.pth
+  
+  # Analyze and visualize results
+  python main.py --mode analyze
         """
     )
     
     parser.add_argument(
         '--mode',
         type=str,
-        choices=['train', 'evaluate', 'predict', 'info'],
+        choices=['train', 'evaluate', 'predict', 'info', 'analyze'],
         required=True,
-        help='Mode to run: train, evaluate, predict, or info'
+        help='Mode to run: train, evaluate, predict, info, or analyze'
     )
     
     parser.add_argument(
@@ -371,6 +374,107 @@ def main():
             print(f"Prediction failed with error: {str(e)}")
             print("=" * 80)
             raise
+    
+    elif args.mode == 'analyze':
+        from pathlib import Path
+        
+        print("=" * 80)
+        print("MS DETECTION RESULTS - COMPREHENSIVE ANALYSIS")
+        print("=" * 80)
+        print()
+        
+        results_dir = Path(config.RESULTS_DIR)
+        
+        # Check if results directory exists
+        if not results_dir.exists():
+            print("=" * 80)
+            print("Error: Results directory not found!")
+            print(f"Expected path: {results_dir}")
+            print("Please ensure test results are available.")
+            print("=" * 80)
+            sys.exit(1)
+        
+        print(f"✓ Results directory found: {results_dir}")
+        print()
+        
+        # Step 1: Generate visualizations
+        print("=" * 80)
+        print("STEP 1: GENERATING VISUALIZATIONS")
+        print("=" * 80)
+        print()
+        
+        try:
+            from visualize_results import ResultsVisualizer
+            
+            visualizer = ResultsVisualizer(results_dir=str(results_dir))
+            visualizer.generate_all()
+            
+            print()
+            print("✓ Visualizations generated successfully!")
+            print()
+            
+        except Exception as e:
+            print("=" * 80)
+            print(f"Error generating visualizations: {e}")
+            print("=" * 80)
+            import traceback
+            traceback.print_exc()
+            sys.exit(1)
+        
+        # Step 2: Generate markdown report
+        print("=" * 80)
+        print("STEP 2: GENERATING MARKDOWN REPORT")
+        print("=" * 80)
+        print()
+        
+        try:
+            from generate_report import ReportGenerator
+            
+            generator = ReportGenerator(results_dir=str(results_dir))
+            report_path = results_dir / 'RESULTS_REPORT.md'
+            output_path = generator.save_report(output_path=str(report_path))
+            
+            print()
+            print("✓ Report generated successfully!")
+            print()
+            
+        except Exception as e:
+            print("=" * 80)
+            print(f"Error generating report: {e}")
+            print("=" * 80)
+            import traceback
+            traceback.print_exc()
+            sys.exit(1)
+        
+        # Summary
+        print("=" * 80)
+        print("ANALYSIS COMPLETE!")
+        print("=" * 80)
+        print()
+        print("📁 Generated Files:")
+        print()
+        print("📊 Visualizations:")
+        vis_dir = results_dir / 'visualizations'
+        if vis_dir.exists():
+            for file in sorted(vis_dir.glob('*')):
+                size = file.stat().st_size / 1024  # KB
+                print(f"   • {file.name} ({size:.1f} KB)")
+        
+        print()
+        print("📄 Report:")
+        report_path = results_dir / 'RESULTS_REPORT.md'
+        if report_path.exists():
+            size = report_path.stat().st_size / 1024  # KB
+            print(f"   • RESULTS_REPORT.md ({size:.1f} KB)")
+        
+        print()
+        print("=" * 80)
+        print()
+        print("Next Steps:")
+        print(f"  1. View visualizations: Open files in {vis_dir}/")
+        print(f"  2. Read the report: cat {report_path}")
+        print("  3. Share results: Use the comprehensive_report.png for presentations")
+        print()
 
 
 if __name__ == "__main__":
