@@ -56,6 +56,25 @@ USE_AUGMENTATION = True
 AUGMENTATION_PROB = 0.5
 
 # ===========================
+# Patch-based Training Configuration
+# ===========================
+USE_PATCH_TRAINING = False  # Enable patch-based training instead of full images
+PATCH_SIZE = (256, 256)  # Size of patches to extract
+PATCHES_PER_IMAGE = 4  # Number of patches to extract per image
+FOREGROUND_PATCH_RATIO = 0.7  # Ratio of patches that should contain foreground (lesions)
+MIN_FOREGROUND_RATIO = 0.05  # Minimum foreground ratio in mask to consider a patch as "foreground"
+
+# ===========================
+# Oversampling/Undersampling Configuration
+# ===========================
+USE_CLASS_SAMPLING = False  # Enable oversampling/undersampling based on class
+OVERSAMPLE_RARE_CLASS = True  # Oversample images with lesions (rare class)
+UNDERSAMPLE_BACKGROUND = True  # Undersample pure-background images
+RARE_CLASS_OVERSAMPLE_FACTOR = 3  # How many times to oversample rare-class images
+BACKGROUND_UNDERSAMPLE_FACTOR = 0.3  # Keep only this fraction of pure-background images
+PURE_BACKGROUND_THRESHOLD = 0.01  # Maximum foreground ratio to consider image as "pure background"
+
+# ===========================
 # Training Settings
 # ===========================
 # Early stopping

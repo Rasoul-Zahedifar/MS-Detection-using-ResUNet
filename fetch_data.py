@@ -3,7 +3,12 @@ Data fetching and DataLoader creation for MS Detection
 Provides convenient interface for loading train/val/test datasets
 """
 from torch.utils.data import DataLoader
-from normalize_data import MSDataset
+from normalize_data import (
+    MSDataset, 
+    MSPatchDataset, 
+    analyze_image_classes, 
+    create_weighted_sampler
+)
 import config
 import os
 
@@ -18,7 +23,9 @@ class MSDataFetcher:
                  batch_size=None, 
                  image_size=None,
                  use_augmentation=None,
-                 num_workers=4):
+                 num_workers=4,
+                 use_patch_training=None,
+                 use_class_sampling=None):
         """
         Initialize data fetcher
         
@@ -27,14 +34,19 @@ class MSDataFetcher:
             image_size (tuple): Target image size (default: from config)
             use_augmentation (bool): Apply augmentation to training data (default: from config)
             num_workers (int): Number of workers for data loading
+            use_patch_training (bool): Use patch-based training (default: from config)
+            use_class_sampling (bool): Use class-based sampling (default: from config)
         """
         self.batch_size = batch_size or config.BATCH_SIZE
         self.image_size = image_size or config.IMAGE_SIZE
         self.use_augmentation = use_augmentation if use_augmentation is not None else config.USE_AUGMENTATION
+        self.use_patch_training = use_patch_training if use_patch_training is not None else config.USE_PATCH_TRAINING
+        self.use_class_sampling = use_class_sampling if use_class_sampling is not None else config.USE_CLASS_SAMPLING
         self.num_workers = num_workers or os.cpu_count() // 2
         
         self.datasets = {}
         self.loaders = {}
+        self.samplers = {}
         
         self._prepare_datasets()
         self._prepare_loaders()
@@ -43,15 +55,27 @@ class MSDataFetcher:
         """Create dataset objects for train/val/test splits"""
         print("Preparing datasets...")
         
-        # Training dataset with augmentation
-        self.datasets['train'] = MSDataset(
-            config.TRAIN_IMAGE_DIR,
-            config.TRAIN_MASK_DIR,
-            image_size=self.image_size,
-            augment=self.use_augmentation
-        )
+        # Training dataset
+        if self.use_patch_training:
+            print("Using patch-based training...")
+            self.datasets['train'] = MSPatchDataset(
+                config.TRAIN_IMAGE_DIR,
+                config.TRAIN_MASK_DIR,
+                patch_size=config.PATCH_SIZE,
+                patches_per_image=config.PATCHES_PER_IMAGE,
+                foreground_patch_ratio=config.FOREGROUND_PATCH_RATIO,
+                min_foreground_ratio=config.MIN_FOREGROUND_RATIO,
+                augment=self.use_augmentation
+            )
+        else:
+            self.datasets['train'] = MSDataset(
+                config.TRAIN_IMAGE_DIR,
+                config.TRAIN_MASK_DIR,
+                image_size=self.image_size,
+                augment=self.use_augmentation
+            )
         
-        # Validation dataset without augmentation
+        # Validation dataset without augmentation (always full images)
         self.datasets['val'] = MSDataset(
             config.VAL_IMAGE_DIR,
             config.VAL_MASK_DIR,
@@ -59,7 +83,7 @@ class MSDataFetcher:
             augment=False
         )
         
-        # Test dataset without augmentation
+        # Test dataset without augmentation (always full images)
         self.datasets['test'] = MSDataset(
             config.TEST_IMAGE_DIR,
             config.TEST_MASK_DIR,
@@ -70,18 +94,52 @@ class MSDataFetcher:
         print(f"Train: {len(self.datasets['train'])} samples")
         print(f"Val: {len(self.datasets['val'])} samples")
         print(f"Test: {len(self.datasets['test'])} samples")
+        
+        # Analyze classes for sampling if needed
+        if self.use_class_sampling and not self.use_patch_training:
+            print("Analyzing image classes for sampling...")
+            rare_class_indices, background_indices, all_indices = analyze_image_classes(
+                config.TRAIN_IMAGE_DIR,
+                config.TRAIN_MASK_DIR
+            )
+            print(f"  Rare-class images (with lesions): {len(rare_class_indices)}")
+            print(f"  Pure-background images: {len(background_indices)}")
+            
+            self.rare_class_indices = rare_class_indices
+            self.background_indices = background_indices
+            self.all_indices = all_indices
     
     def _prepare_loaders(self):
         """Create DataLoader objects for train/val/test splits"""
-        # Training loader with shuffling
-        self.loaders['train'] = DataLoader(
-            self.datasets['train'],
-            batch_size=self.batch_size,
-            shuffle=True,
-            num_workers=self.num_workers,
-            pin_memory = config.DEVICE.type.startswith("cuda"),
-            drop_last=True  # Drop last incomplete batch
-        )
+        # Training loader
+        if self.use_class_sampling and not self.use_patch_training:
+            # Use weighted sampler for oversampling/undersampling
+            print("Creating weighted sampler for class-based sampling...")
+            sampler = create_weighted_sampler(
+                self.datasets['train'],
+                self.rare_class_indices,
+                self.background_indices
+            )
+            self.samplers['train'] = sampler
+            
+            self.loaders['train'] = DataLoader(
+                self.datasets['train'],
+                batch_size=self.batch_size,
+                sampler=sampler,  # Use sampler instead of shuffle
+                num_workers=self.num_workers,
+                pin_memory=config.DEVICE.type.startswith("cuda"),
+                drop_last=True
+            )
+        else:
+            # Standard loader with shuffling
+            self.loaders['train'] = DataLoader(
+                self.datasets['train'],
+                batch_size=self.batch_size,
+                shuffle=True,
+                num_workers=self.num_workers,
+                pin_memory=config.DEVICE.type.startswith("cuda"),
+                drop_last=True
+            )
         
         # Validation loader without shuffling
         self.loaders['val'] = DataLoader(

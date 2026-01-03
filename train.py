@@ -358,7 +358,9 @@ def train_model(resume_from=None):
     data_fetcher = MSDataFetcher(
         batch_size=config.BATCH_SIZE,
         image_size=config.IMAGE_SIZE,
-        use_augmentation=config.USE_AUGMENTATION
+        use_augmentation=config.USE_AUGMENTATION,
+        use_patch_training=config.USE_PATCH_TRAINING,
+        use_class_sampling=config.USE_CLASS_SAMPLING
     )
     
     train_loader = data_fetcher.get_loader('train')
