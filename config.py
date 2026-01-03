@@ -28,10 +28,16 @@ os.makedirs(RESULTS_DIR, exist_ok=True)
 # ===========================
 # Model Configuration
 # ===========================
-MODEL_NAME = 'ResUNet'
+MODEL_NAME = 'ResUNet-Transformer'
 IN_CHANNELS = 1  # Grayscale images
 OUT_CHANNELS = 1  # Binary segmentation mask
 FILTERS = [64, 128, 256, 512]  # Filter sizes for encoder
+
+# Transformer Configuration
+USE_TRANSFORMER = True  # Enable transformer blocks in bottleneck
+TRANSFORMER_LAYERS = 2  # Number of transformer layers in bottleneck
+TRANSFORMER_HEADS = 8  # Number of attention heads in transformer
+TRANSFORMER_DIM = None  # Embedding dimension (None = use bottleneck_channels)
 
 # ===========================
 # Training Configuration
@@ -58,7 +64,7 @@ AUGMENTATION_PROB = 0.5
 # ===========================
 # Patch-based Training Configuration
 # ===========================
-USE_PATCH_TRAINING = False  # Enable patch-based training instead of full images
+USE_PATCH_TRAINING = True  # Enable patch-based training instead of full images
 PATCH_SIZE = (256, 256)  # Size of patches to extract
 PATCHES_PER_IMAGE = 4  # Number of patches to extract per image
 FOREGROUND_PATCH_RATIO = 0.7  # Ratio of patches that should contain foreground (lesions)
@@ -67,7 +73,7 @@ MIN_FOREGROUND_RATIO = 0.05  # Minimum foreground ratio in mask to consider a pa
 # ===========================
 # Oversampling/Undersampling Configuration
 # ===========================
-USE_CLASS_SAMPLING = False  # Enable oversampling/undersampling based on class
+USE_CLASS_SAMPLING = True  # Enable oversampling/undersampling based on class
 OVERSAMPLE_RARE_CLASS = True  # Oversample images with lesions (rare class)
 UNDERSAMPLE_BACKGROUND = True  # Undersample pure-background images
 RARE_CLASS_OVERSAMPLE_FACTOR = 3  # How many times to oversample rare-class images
