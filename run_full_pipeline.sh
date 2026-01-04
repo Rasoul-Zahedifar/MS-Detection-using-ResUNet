@@ -16,8 +16,21 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
+# Create logs directory if it doesn't exist
+mkdir -p logs
+
+# Generate log file name with timestamp
+TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+LOG_FILE="logs/pipeline_${TIMESTAMP}.log"
+
+# Start logging - redirect all output to both terminal and log file
+# This captures both stdout and stderr
+exec > >(tee -a "$LOG_FILE")
+exec 2>&1
+
 echo -e "${BLUE}========================================${NC}"
 echo -e "${BLUE}MS Detection - Full Pipeline${NC}"
+echo -e "${BLUE}Log file: ${LOG_FILE}${NC}"
 echo -e "${BLUE}========================================${NC}"
 echo ""
 
@@ -119,6 +132,9 @@ echo -e "${YELLOW}Next Steps:${NC}"
 echo "   1. View the comprehensive report: cat results/RESULTS_REPORT.md"
 echo "   2. Check visualizations: ls -lh results/visualizations/"
 echo "   3. Compare model performance in the report"
+echo ""
+echo -e "${YELLOW}Log File:${NC}"
+echo "   • ${LOG_FILE}"
 echo ""
 echo -e "${BLUE}========================================${NC}"
 
