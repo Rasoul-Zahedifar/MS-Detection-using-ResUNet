@@ -73,3 +73,10 @@ dataset.zip
 test.ipynb
 checkpoints/
 results/
+
+# Experiments and logs (generated files)
+experiments/
+logs/
+*.backup
+_config_overrides.json
+_run_pipeline_temp.py

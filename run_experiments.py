@@ -8,7 +8,6 @@ USE_CLASS_SAMPLING, and LOSS_TYPE, runs the pipeline for each, and saves results
 import os
 import sys
 import subprocess
-import shutil
 import json
 from itertools import product
 from datetime import datetime
@@ -29,64 +28,7 @@ class Colors:
     NC = '\033[0m'  # No Color
 
 
-def create_experiment_config(base_config_path, output_config_path, config_overrides, experiment_dir):
-    """
-    Create a modified config file with the specified overrides
-    
-    Args:
-        base_config_path: Path to the original config.py
-        output_config_path: Path where the new config will be saved
-        config_overrides: Dictionary of config variable overrides
-        experiment_dir: Directory for this experiment (for results/checkpoints)
-    """
-    with open(base_config_path, 'r') as f:
-        config_content = f.read()
-    
-    # Apply overrides
-    import re
-    for key, value in config_overrides.items():
-        # Handle boolean values
-        if isinstance(value, bool):
-            value_str = 'True' if value else 'False'
-        # Handle string values
-        elif isinstance(value, str):
-            value_str = f"'{value}'"
-        else:
-            value_str = str(value)
-        
-        # Replace the config line
-        # Match patterns like: USE_TRANSFORMER = True
-        pattern = f"({key})\\s*=\\s*[^\\n]+"
-        replacement = f"\\1 = {value_str}"
-        
-        if re.search(pattern, config_content):
-            config_content = re.sub(pattern, replacement, config_content)
-        else:
-            # If not found, add it at the end of the file
-            config_content += f"\n{replacement}\n"
-    
-    # Override RESULTS_DIR and CHECKPOINT_DIR to be experiment-specific
-    # Use os.path.join with proper escaping - need to handle the path correctly
-    # experiment_dir is relative to BASE_DIR
-    results_dir_override = f"RESULTS_DIR = os.path.join(BASE_DIR, '{experiment_dir}', 'results')"
-    checkpoint_dir_override = f"CHECKPOINT_DIR = os.path.join(BASE_DIR, '{experiment_dir}', 'checkpoints')"
-    
-    # Replace existing directory definitions
-    # Match: RESULTS_DIR = os.path.join(BASE_DIR, 'results')
-    config_content = re.sub(
-        r"RESULTS_DIR\s*=\s*os\.path\.join\([^)]+\)",
-        results_dir_override,
-        config_content
-    )
-    config_content = re.sub(
-        r"CHECKPOINT_DIR\s*=\s*os\.path\.join\([^)]+\)",
-        checkpoint_dir_override,
-        config_content
-    )
-    
-    # Write the modified config
-    with open(output_config_path, 'w') as f:
-        f.write(config_content)
+# Removed - no longer creating config files
 
 
 def get_experiment_name(config):
@@ -120,19 +62,8 @@ def run_experiment(experiment_dir, config_overrides, base_dir):
     for key, value in config_overrides.items():
         print(f"  {key}: {value}")
     
-    # Create experiment directory
+    # Create experiment directory (all outputs go here, nothing in root)
     os.makedirs(experiment_dir, exist_ok=True)
-    
-    # Create temporary config file
-    temp_config_path = os.path.join(experiment_dir, 'config.py')
-    base_config_path = os.path.join(base_dir, 'config.py')
-    
-    # Get relative path from base_dir to experiment_dir for config
-    # Use forward slashes for Python path compatibility
-    rel_experiment_dir = os.path.relpath(experiment_dir, base_dir).replace('\\', '/')
-    
-    # Read base config and create modified version
-    create_experiment_config(base_config_path, temp_config_path, config_overrides, rel_experiment_dir)
     
     # Save experiment metadata
     metadata = {
@@ -146,59 +77,35 @@ def run_experiment(experiment_dir, config_overrides, base_dir):
     with open(metadata_path, 'w') as f:
         json.dump(metadata, f, indent=2)
     
-    # Backup original config and use temporary one
-    original_config_backup = os.path.join(base_dir, 'config.py.backup')
-    if not os.path.exists(original_config_backup):
-        shutil.copy2(base_config_path, original_config_backup)
-    
-    # Temporarily replace config.py
-    shutil.copy2(temp_config_path, base_config_path)
-    
-    # Update results and checkpoints directories in config to be experiment-specific
-    # We'll need to modify the run script or handle this differently
-    # For now, we'll copy results after the run
+    # Save config overrides as JSON for the wrapper script
+    config_json_path = os.path.join(experiment_dir, '_config_overrides.json')
+    with open(config_json_path, 'w') as f:
+        json.dump(config_overrides, f, indent=2)
     
     try:
-        # Run the pipeline
+        # Run the pipeline using wrapper script that doesn't modify config.py
         log_file = os.path.join(experiment_dir, 'pipeline.log')
-        script_path = os.path.join(base_dir, 'run_full_pipeline.sh')
         
         print(f"\n{Colors.YELLOW}Starting pipeline...{Colors.NC}")
         print(f"Log file: {log_file}")
         
+        # Use the wrapper script that overrides config at runtime
+        wrapper_script = os.path.join(base_dir, 'run_experiment_with_config.py')
+        
         with open(log_file, 'w') as log:
             result = subprocess.run(
-                ['bash', script_path],
+                [sys.executable, wrapper_script, config_json_path, experiment_dir],
                 cwd=base_dir,
                 stdout=log,
                 stderr=subprocess.STDOUT,
                 text=True
             )
         
-        # Restore original config
-        shutil.copy2(original_config_backup, base_config_path)
+        # Clean up temporary config JSON
+        if os.path.exists(config_json_path):
+            os.remove(config_json_path)
         
         if result.returncode == 0:
-            # Results and checkpoints should already be in experiment_dir
-            # due to config override, but verify and move if needed
-            results_src = os.path.join(base_dir, 'results')
-            results_dst = os.path.join(experiment_dir, 'results')
-            
-            checkpoints_src = os.path.join(base_dir, 'checkpoints')
-            checkpoints_dst = os.path.join(experiment_dir, 'checkpoints')
-            
-            # If results were created in base_dir (fallback), move them
-            if os.path.exists(results_src) and not os.path.exists(results_dst):
-                shutil.move(results_src, results_dst)
-            elif os.path.exists(results_src) and os.path.exists(results_dst):
-                # Merge or replace - for safety, we'll keep the experiment-specific one
-                shutil.rmtree(results_src)
-            
-            if os.path.exists(checkpoints_src) and not os.path.exists(checkpoints_dst):
-                shutil.move(checkpoints_src, checkpoints_dst)
-            elif os.path.exists(checkpoints_src) and os.path.exists(checkpoints_dst):
-                shutil.rmtree(checkpoints_src)
-            
             metadata['status'] = 'completed'
             metadata['return_code'] = 0
             print(f"{Colors.GREEN}✓ Experiment {exp_name} completed successfully!{Colors.NC}")
@@ -208,9 +115,9 @@ def run_experiment(experiment_dir, config_overrides, base_dir):
             print(f"{Colors.RED}✗ Experiment {exp_name} failed with return code {result.returncode}{Colors.NC}")
         
     except Exception as e:
-        # Restore original config
-        if os.path.exists(original_config_backup):
-            shutil.copy2(original_config_backup, base_config_path)
+        # Clean up temporary files
+        if os.path.exists(config_json_path):
+            os.remove(config_json_path)
         
         metadata['status'] = 'error'
         metadata['error'] = str(e)
