@@ -24,7 +24,7 @@ from utils import (
 )
 from sliding_window_inference import (
     sliding_window_inference,
-    evaluate_with_sliding_wind
+    evaluate_with_sliding_window
 )
 
 
