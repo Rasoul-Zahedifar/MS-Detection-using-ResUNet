@@ -4,65 +4,142 @@ Includes loss functions, metrics, visualization, and helper functions
 """
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import numpy as np
 import matplotlib.pyplot as plt
-from sklearn.metrics import confusion_matrix, precision_recall_curve, auc
-import os
+from sklearn.metrics import confusion_matrix
 import config
 
 
 # ===========================
 # Loss Functions
 # ===========================
+# All loss functions expect LOGITS as input (raw model outputs before sigmoid)
+
 class DiceLoss(nn.Module):
+    """
+    Dice Loss for binary segmentation
+    Expects logits as input, applies sigmoid internally
+    """
     def __init__(self, smooth=1e-6):
         super().__init__()
         self.smooth = smooth
-    def forward(self, predictions, targets):
-        p = _to_probs(predictions)
-        p = p.view(-1)
-        t = targets.view(-1)
-        inter = (p * t).sum()
-        dice = (2*inter + self.smooth) / (p.sum() + t.sum() + self.smooth)
+    
+    def forward(self, logits, targets):
+        """
+        Args:
+            logits: Raw model outputs (B, 1, H, W) - no sigmoid applied
+            targets: Binary ground truth (B, 1, H, W) - values in [0, 1]
+        """
+        # Apply sigmoid to convert logits to probabilities
+        probs = torch.sigmoid(logits)
+        probs = probs.view(-1)
+        targets = targets.view(-1)
+        
+        intersection = (probs * targets).sum()
+        dice = (2 * intersection + self.smooth) / (probs.sum() + targets.sum() + self.smooth)
+        
         return 1 - dice
 
+
 class FocalLoss(nn.Module):
-    def __init__(self, alpha=0.25, gamma=2.0, eps=1e-6):
+    """
+    Focal Loss for addressing class imbalance
+    Expects logits as input, applies sigmoid internally
+    """
+    def __init__(self, alpha=0.25, gamma=2.0):
         super().__init__()
-        self.alpha, self.gamma, self.eps = alpha, gamma, eps
-    def forward(self, predictions, targets):
-        p = _to_probs(predictions).clamp(self.eps, 1 - self.eps)
-        t = targets.view(-1)
-        p = p.view(-1)
-        bce = -(t*torch.log(p) + (1-t)*torch.log(1-p))
-        pt = torch.where(t == 1, p, 1-p)
-        alpha_t = torch.where(t == 1, torch.tensor(self.alpha, device=p.device), torch.tensor(1-self.alpha, device=p.device))
-        loss = alpha_t * (1-pt)**self.gamma * bce
-        return loss.mean()
+        self.alpha = alpha
+        self.gamma = gamma
+    
+    def forward(self, logits, targets):
+        """
+        Args:
+            logits: Raw model outputs (B, 1, H, W) - no sigmoid applied
+            targets: Binary ground truth (B, 1, H, W) - values in [0, 1]
+        """
+        # Use BCEWithLogitsLoss for numerical stability
+        bce_loss = nn.functional.binary_cross_entropy_with_logits(
+            logits, targets, reduction='none'
+        )
+        
+        # Calculate pt for focal term
+        probs = torch.sigmoid(logits)
+        pt = torch.where(targets == 1, probs, 1 - probs)
+        
+        # Calculate alpha_t
+        alpha_t = torch.where(
+            targets == 1,
+            torch.tensor(self.alpha, device=logits.device),
+            torch.tensor(1 - self.alpha, device=logits.device)
+        )
+        
+        # Focal loss formula
+        focal_loss = alpha_t * (1 - pt) ** self.gamma * bce_loss
+        
+        return focal_loss.mean()
+
 
 class CombinedLoss(nn.Module):
+    """
+    Combined BCE + Dice Loss
+    Expects logits as input
+    """
     def __init__(self, bce_weight=0.5, dice_weight=0.5):
         super().__init__()
-        self.bce_weight, self.dice_weight = bce_weight, dice_weight
-        self.bce = nn.BCELoss()
+        self.bce_weight = bce_weight
+        self.dice_weight = dice_weight
+        self.bce = nn.BCEWithLogitsLoss()  # Handles sigmoid internally
         self.dice = DiceLoss()
-    def forward(self, predictions, targets):
-        p = _to_probs(predictions)
-        return self.bce_weight * self.bce(p, targets) + self.dice_weight * self.dice(p, targets)
+    
+    def forward(self, logits, targets):
+        """
+        Args:
+            logits: Raw model outputs (B, 1, H, W) - no sigmoid applied
+            targets: Binary ground truth (B, 1, H, W) - values in [0, 1]
+        """
+        bce_loss = self.bce(logits, targets)
+        dice_loss = self.dice(logits, targets)
+        
+        return self.bce_weight * bce_loss + self.dice_weight * dice_loss
+
 
 class WeightedCombinedLoss(nn.Module):
+    """
+    Combined Focal + Dice Loss (best for severe class imbalance)
+    Expects logits as input
+    """
     def __init__(self, focal_weight=0.5, dice_weight=0.5, alpha=0.25, gamma=2.0):
         super().__init__()
-        self.focal_weight, self.dice_weight = focal_weight, dice_weight
+        self.focal_weight = focal_weight
+        self.dice_weight = dice_weight
         self.focal = FocalLoss(alpha=alpha, gamma=gamma)
-        self.dice  = DiceLoss()
-    def forward(self, predictions, targets):
-        return self.focal_weight * self.focal(predictions, targets) + self.dice_weight * self.dice(predictions, targets)
+        self.dice = DiceLoss()
+    
+    def forward(self, logits, targets):
+        """
+        Args:
+            logits: Raw model outputs (B, 1, H, W) - no sigmoid applied
+            targets: Binary ground truth (B, 1, H, W) - values in [0, 1]
+        """
+        focal_loss = self.focal(logits, targets)
+        dice_loss = self.dice(logits, targets)
+        
+        return self.focal_weight * focal_loss + self.dice_weight * dice_loss
+
 
 def get_loss_function(loss_type='combined'):
+    """
+    Get loss function by type
+    All loss functions expect logits as input
+    
+    Args:
+        loss_type: One of 'bce', 'dice', 'focal', 'combined', 'weighted_combined'
+    
+    Returns:
+        Loss function module
+    """
     if loss_type == 'bce':
-        return CombinedLoss(bce_weight=1.0, dice_weight=0.0)
+        return nn.BCEWithLogitsLoss()
     elif loss_type == 'dice':
         return DiceLoss()
     elif loss_type == 'focal':
@@ -71,8 +148,10 @@ def get_loss_function(loss_type='combined'):
         return CombinedLoss(config.BCE_WEIGHT, config.DICE_WEIGHT)
     elif loss_type == 'weighted_combined':
         return WeightedCombinedLoss(
-            focal_weight=0.5, dice_weight=0.5,
-            alpha=config.FOCAL_ALPHA, gamma=config.FOCAL_GAMMA
+            focal_weight=0.5,
+            dice_weight=0.5,
+            alpha=config.FOCAL_ALPHA,
+            gamma=config.FOCAL_GAMMA
         )
     else:
         raise ValueError(f"Unknown loss type: {loss_type}")
@@ -81,10 +160,23 @@ def get_loss_function(loss_type='combined'):
 # ===========================
 # Metrics
 # ===========================
+# All metric functions expect LOGITS as input and apply sigmoid internally
 
-def dice_coefficient(predictions, targets, threshold=0.5, smooth=1e-6):
-    preds = _to_probs(predictions)
-    preds = (preds > threshold).float()
+def dice_coefficient(logits, targets, threshold=0.5, smooth=1e-6):
+    """
+    Calculate Dice coefficient
+    
+    Args:
+        logits: Raw model outputs (B, 1, H, W) - no sigmoid applied
+        targets: Binary ground truth (B, 1, H, W)
+        threshold: Threshold for binarization
+        smooth: Smoothing factor
+    
+    Returns:
+        float: Dice coefficient
+    """
+    probs = torch.sigmoid(logits)
+    preds = (probs > threshold).float()
     preds = preds.view(preds.size(0), -1)
     targs = targets.view(targets.size(0), -1)
     intersection = (preds * targs).sum(1)
@@ -92,9 +184,21 @@ def dice_coefficient(predictions, targets, threshold=0.5, smooth=1e-6):
     return dice.mean().item()
 
 
-def iou_score(predictions, targets, threshold=0.5, smooth=1e-6):
-    preds = _to_probs(predictions)
-    preds = (preds > threshold).float().view(-1)
+def iou_score(logits, targets, threshold=0.5, smooth=1e-6):
+    """
+    Calculate IoU (Jaccard) score
+    
+    Args:
+        logits: Raw model outputs (B, 1, H, W) - no sigmoid applied
+        targets: Binary ground truth (B, 1, H, W)
+        threshold: Threshold for binarization
+        smooth: Smoothing factor
+    
+    Returns:
+        float: IoU score
+    """
+    probs = torch.sigmoid(logits)
+    preds = (probs > threshold).float().view(-1)
     targs = targets.view(-1)
     intersection = (preds * targs).sum()
     union = preds.sum() + targs.sum() - intersection
@@ -102,28 +206,40 @@ def iou_score(predictions, targets, threshold=0.5, smooth=1e-6):
     return iou.item()
 
 
-def pixel_accuracy(predictions, targets, threshold=0.5):
-    preds = _to_probs(predictions)
-    preds = (preds > threshold).float()
+def pixel_accuracy(logits, targets, threshold=0.5):
+    """
+    Calculate pixel-wise accuracy
+    
+    Args:
+        logits: Raw model outputs (B, 1, H, W) - no sigmoid applied
+        targets: Binary ground truth (B, 1, H, W)
+        threshold: Threshold for binarization
+    
+    Returns:
+        float: Pixel accuracy
+    """
+    probs = torch.sigmoid(logits)
+    preds = (probs > threshold).float()
     correct = (preds == targets).sum()
     total = targets.numel()
     return (correct / (total + 1e-6)).item()
 
 
-def sensitivity_specificity(predictions, targets, threshold=0.5):
+def sensitivity_specificity(logits, targets, threshold=0.5):
     """
-    Calculate sensitivity (recall) and specificity
+    Calculate sensitivity (recall/TPR) and specificity (TNR)
     
     Args:
-        predictions (torch.Tensor): Predicted probabilities
-        targets (torch.Tensor): Ground truth masks
-        threshold (float): Threshold for binarization
+        logits: Raw model outputs (B, 1, H, W) - no sigmoid applied
+        targets: Binary ground truth (B, 1, H, W)
+        threshold: Threshold for binarization
     
     Returns:
         tuple: (sensitivity, specificity)
     """
-    # Binarize predictions
-    predictions = (predictions > threshold).float()
+    # Apply sigmoid and binarize predictions
+    probs = torch.sigmoid(logits)
+    predictions = (probs > threshold).float()
     
     # Flatten tensors
     predictions = predictions.view(-1).cpu().numpy()
@@ -139,13 +255,25 @@ def sensitivity_specificity(predictions, targets, threshold=0.5):
     return sensitivity, specificity
 
 
-def calculate_metrics(predictions, targets, threshold=0.5):
+def calculate_metrics(logits, targets, threshold=0.5):
+    """
+    Calculate all metrics
+    
+    Args:
+        logits: Raw model outputs (B, 1, H, W) - no sigmoid applied
+        targets: Binary ground truth (B, 1, H, W)
+        threshold: Threshold for binarization
+    
+    Returns:
+        dict: Dictionary of metrics
+    """
+    sens, spec = sensitivity_specificity(logits, targets, threshold)
     return {
-        'dice': dice_coefficient(predictions, targets, threshold),
-        'iou': iou_score(predictions, targets, threshold),
-        'accuracy': pixel_accuracy(predictions, targets, threshold),
-        'sensitivity': sensitivity_specificity(_to_probs(predictions), targets, threshold)[0],
-        'specificity': sensitivity_specificity(_to_probs(predictions), targets, threshold)[1],
+        'dice': dice_coefficient(logits, targets, threshold),
+        'iou': iou_score(logits, targets, threshold),
+        'accuracy': pixel_accuracy(logits, targets, threshold),
+        'sensitivity': sens,
+        'specificity': spec,
     }
 
 
@@ -308,12 +436,6 @@ def load_checkpoint(model, optimizer, filepath, device):
     
     return model, optimizer, epoch, loss, metrics
 
-def _to_probs(x):
-    # If outside [0,1] range, assume logits and apply sigmoid
-    if (x.min() < 0) or (x.max() > 1):
-        return torch.sigmoid(x)
-    return x
-
 def set_seed(seed=42):
     """
     Set random seed for reproducibility
@@ -388,4 +510,3 @@ if __name__ == "__main__":
     print("\nMetrics:")
     for key, value in metrics.items():
         print(f"  {key.capitalize()}: {value:.4f}")
-

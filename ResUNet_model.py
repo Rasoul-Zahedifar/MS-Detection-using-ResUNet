@@ -355,8 +355,8 @@ class ResUNet(nn.Module):
         # ===========================
         # Output Layer
         # ===========================
+        # Output logits (no sigmoid - handled by loss function for numerical stability)
         self.conv_last = nn.Conv2d(filters[0], out_channels, kernel_size=1)
-        self.sigmoid = nn.Sigmoid()
     
     def forward(self, x):
         """
@@ -366,7 +366,8 @@ class ResUNet(nn.Module):
             x (torch.Tensor): Input tensor of shape (B, C, H, W)
             
         Returns:
-            torch.Tensor: Output segmentation map of shape (B, 1, H, W)
+            torch.Tensor: Output logits of shape (B, 1, H, W) - no sigmoid applied
+                         (sigmoid is applied internally by loss functions for numerical stability)
         """
         # Encoder path
         e1 = self.encoder1(x)
@@ -409,9 +410,8 @@ class ResUNet(nn.Module):
         d1 = torch.cat([d1, e1], dim=1)  # Skip connection
         d1 = self.decoder1(d1)
         
-        # Output
+        # Output logits (no sigmoid)
         out = self.conv_last(d1)
-        out = self.sigmoid(out)
         
         return out
 
@@ -460,4 +460,6 @@ if __name__ == "__main__":
     
     print(f"\nInput shape: {dummy_input.shape}")
     print(f"Output shape: {output.shape}")
-    print(f"Output range: [{output.min():.4f}, {output.max():.4f}]")
+    print(f"Output range (logits): [{output.min():.4f}, {output.max():.4f}]")
+    print(f"Note: Model outputs logits (not probabilities)")
+    print(f"      Apply sigmoid for visualization: torch.sigmoid(output)")

@@ -22,6 +22,10 @@ from utils import (
     visualize_predictions,
     set_seed
 )
+from sliding_window_inference import (
+    sliding_window_inference,
+    evaluate_with_sliding_wind
+)
 
 
 class Evaluator:
@@ -46,6 +50,7 @@ class Evaluator:
     def evaluate(self, save_visualizations=True, num_vis_samples=10):
         """
         Evaluate model on test dataset
+        Automatically uses sliding window inference if patch training was used
         
         Args:
             save_visualizations (bool): Whether to save visualization samples
@@ -56,6 +61,17 @@ class Evaluator:
         """
         print("=" * 60)
         print("Evaluating model on test dataset...")
+        
+        # Check if we should use sliding window inference
+        use_sliding_window = getattr(config, 'USE_PATCH_TRAINING', False)
+        
+        if use_sliding_window:
+            print("⚠️  PATCH TRAINING DETECTED")
+            print("   Using sliding window inference to match training distribution")
+            patch_size = getattr(config, 'PATCH_SIZE', (256, 256))
+            stride = (patch_size[0] // 2, patch_size[1] // 2)  # 50% overlap
+            print(f"   Patch size: {patch_size}, Stride: {stride}")
+        
         print("=" * 60)
         
         all_metrics = {
@@ -79,8 +95,26 @@ class Evaluator:
                 images = images.to(self.device)
                 masks = masks.to(self.device)
                 
-                # Forward pass
-                outputs = self.model(images)
+                if use_sliding_window:
+                    # Process each image separately with sliding window
+                    batch_predictions = []
+                    for i in range(images.shape[0]):
+                        image = images[i:i+1]
+                        
+                        # Run sliding window inference
+                        prediction = sliding_window_inference(
+                            model=self.model,
+                            image=image,
+                            patch_size=patch_size,
+                            stride=stride,
+                            device=self.device
+                        )
+                        batch_predictions.append(prediction)
+                    
+                    outputs = torch.cat(batch_predictions, dim=0)
+                else:
+                    # Standard forward pass
+                    outputs = self.model(images)
                 
                 # Calculate metrics for batch
                 batch_metrics = calculate_metrics(outputs, masks)
@@ -118,6 +152,8 @@ class Evaluator:
         # Print results
         print("\n" + "=" * 60)
         print("Evaluation Results:")
+        if use_sliding_window:
+            print("(Using Sliding Window Inference)")
         print("=" * 60)
         for key in avg_metrics:
             print(f"{key.capitalize():15s}: {avg_metrics[key]:.4f} ± {std_metrics[key]:.4f}")
@@ -129,7 +165,8 @@ class Evaluator:
             'average_metrics': avg_metrics,
             'std_metrics': std_metrics,
             'all_metrics': {key: [float(v) for v in values] 
-                          for key, values in all_metrics.items()}
+                          for key, values in all_metrics.items()},
+            'evaluation_method': 'sliding_window' if use_sliding_window else 'standard'
         }
         
         with open(results_path, 'w') as f:
@@ -211,6 +248,7 @@ class Evaluator:
     def get_prediction_statistics(self):
         """
         Calculate statistics about predictions (e.g., lesion coverage)
+        Uses sliding window if patch training was used
         
         Returns:
             dict: Statistics dictionary
@@ -223,16 +261,36 @@ class Evaluator:
             'avg_predicted_coverage': 0.0
         }
         
+        # Check if we should use sliding window
+        use_sliding_window = getattr(config, 'USE_PATCH_TRAINING', False)
+        if use_sliding_window:
+            patch_size = getattr(config, 'PATCH_SIZE', (256, 256))
+            stride = (patch_size[0] // 2, patch_size[1] // 2)
+        
         with torch.no_grad():
             for images, masks in tqdm(self.test_loader, desc='Calculating stats'):
                 images = images.to(self.device)
                 masks = masks.to(self.device)
                 
-                # Forward pass
-                outputs = self.model(images)
+                # Get predictions
+                if use_sliding_window:
+                    batch_predictions = []
+                    for i in range(images.shape[0]):
+                        image = images[i:i+1]
+                        prediction = sliding_window_inference(
+                            model=self.model,
+                            image=image,
+                            patch_size=patch_size,
+                            stride=stride,
+                            device=self.device
+                        )
+                        batch_predictions.append(prediction)
+                    outputs = torch.cat(batch_predictions, dim=0)
+                else:
+                    outputs = self.model(images)
                 
                 # Binarize predictions
-                pred_binary = (outputs > config.THRESHOLD).float()
+                pred_binary = (torch.sigmoid(outputs) > config.THRESHOLD).float()
                 
                 # Update statistics
                 batch_size = images.shape[0]
@@ -365,4 +423,3 @@ if __name__ == "__main__":
     avg_metrics, std_metrics = evaluate_model()
     
     print("\nEvaluation completed successfully!")
-

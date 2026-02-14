@@ -100,6 +100,9 @@ class Trainer:
         # Gradient accumulation steps
         accumulation_steps = getattr(config, 'GRADIENT_ACCUMULATION_STEPS', 1)
         
+        # Initialize gradients to zero at start of epoch
+        self.optimizer.zero_grad()
+        
         # Progress bar
         pbar = tqdm(self.train_loader, desc=f'Epoch {self.current_epoch + 1} [Train]')
         
@@ -150,6 +153,18 @@ class Trainer:
                 'eff_bs': f"{config.BATCH_SIZE * accumulation_steps}"
             })
         
+        # CRITICAL: Handle leftover accumulated gradients at end of epoch
+        # If total batches is not divisible by accumulation_steps,
+        # we need to apply the remaining gradients
+        if len(self.train_loader) % accumulation_steps != 0:
+            if config.USE_GRADIENT_CLIPPING:
+                torch.nn.utils.clip_grad_norm_(
+                    self.model.parameters(), 
+                    config.MAX_GRAD_NORM
+                )
+            self.optimizer.step()
+            self.optimizer.zero_grad()
+        
         # Calculate averages
         avg_loss = running_loss / len(self.train_loader)
         avg_dice = running_dice / len(self.train_loader)
@@ -174,6 +189,10 @@ class Trainer:
             'specificity': 0.0
         }
         
+        # Track prediction statistics to detect model collapse
+        total_positive_preds = 0
+        total_pixels = 0
+        
         # Progress bar
         pbar = tqdm(self.val_loader, desc=f'Epoch {self.current_epoch + 1} [Val]')
         
@@ -186,11 +205,20 @@ class Trainer:
                 # Forward pass
                 outputs = self.model(images)
                 
+                # MONITORING: Check prediction distribution (first few epochs)
                 if self.current_epoch < 3 and batch_idx == 0:
                     with torch.no_grad():
-                        outs = outputs.detach()
-                        print(f"[sanity] outs range: [{outs.min().item():.3f}, {outs.max().item():.3f}]  "
-                            f"pos_rate@(0.5): {((torch.sigmoid(outs) > 0.5).float().mean().item()):.4f}")
+                        probs = torch.sigmoid(outputs)
+                        print(f"\n[Sanity Check - Epoch {self.current_epoch + 1}]")
+                        print(f"  Output logits range: [{outputs.min().item():.3f}, {outputs.max().item():.3f}]")
+                        print(f"  Output probs range: [{probs.min().item():.3f}, {probs.max().item():.3f}]")
+                        print(f"  Positive prediction rate (@0.5): {(probs > 0.5).float().mean().item():.4f}")
+                        print(f"  Ground truth positive rate: {masks.mean().item():.4f}")
+                
+                # Track predictions for collapse detection
+                probs = torch.sigmoid(outputs)
+                total_positive_preds += (probs > 0.5).sum().item()
+                total_pixels += outputs.numel()
                 
                 # Calculate loss
                 loss = self.criterion(outputs, masks)
@@ -213,6 +241,25 @@ class Trainer:
         avg_loss = running_loss / len(self.val_loader)
         avg_metrics = {key: value / len(self.val_loader) 
                       for key, value in running_metrics.items()}
+        
+        # CRITICAL: Check for model collapse (predicting all zeros)
+        positive_pred_rate = total_positive_preds / total_pixels
+        if positive_pred_rate < 0.001:  # Less than 0.1% positive predictions
+            print(f"\n{'='*60}")
+            print(f"⚠️  WARNING: POTENTIAL MODEL COLLAPSE DETECTED!")
+            print(f"{'='*60}")
+            print(f"  Positive prediction rate: {positive_pred_rate:.6f} ({positive_pred_rate*100:.4f}%)")
+            print(f"  The model is predicting mostly background (zeros).")
+            print(f"  This may indicate:")
+            print(f"    - Class imbalance is too severe")
+            print(f"    - Learning rate is too low")
+            print(f"    - Loss function weights need adjustment")
+            print(f"  Recommendations:")
+            print(f"    - Increase FOCAL_ALPHA (current: {config.FOCAL_ALPHA})")
+            print(f"    - Increase FOCAL_GAMMA (current: {config.FOCAL_GAMMA})")
+            print(f"    - Increase learning rate")
+            print(f"    - Use more aggressive patch sampling")
+            print(f"{'='*60}\n")
         
         return avg_loss, avg_metrics['dice'], avg_metrics
     
@@ -420,4 +467,3 @@ if __name__ == "__main__":
     history = train_model()
     
     print("\nTraining completed successfully!")
-
