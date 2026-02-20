@@ -34,7 +34,7 @@ OUT_CHANNELS = 1  # Binary segmentation mask
 FILTERS = [64, 128, 256, 512]  # Filter sizes for encoder
 
 # Transformer Configuration
-USE_TRANSFORMER = True  # Enable transformer blocks in bottleneck
+USE_TRANSFORMER = False  # Enable transformer blocks in bottleneck
 TRANSFORMER_LAYERS = 2  # Number of transformer layers in bottleneck
 TRANSFORMER_HEADS = 8  # Number of attention heads in transformer
 TRANSFORMER_DIM = None  # Embedding dimension (None = use bottleneck_channels)

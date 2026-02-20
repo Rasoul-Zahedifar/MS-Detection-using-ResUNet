@@ -48,15 +48,19 @@ Examples:
   
   # Analyze and visualize results
   python main.py --mode analyze
+  
+  # Save only the 10 best test samples (by Dice) using best model
+  python main.py --mode best_samples --rank-by dice
+  python main.py --mode best_samples --rank-by loss --num-best 10
         """
     )
     
     parser.add_argument(
         '--mode',
         type=str,
-        choices=['train', 'evaluate', 'predict', 'info', 'analyze'],
+        choices=['train', 'evaluate', 'predict', 'info', 'analyze', 'best_samples'],
         required=True,
-        help='Mode to run: train, evaluate, predict, info, or analyze'
+        help='Mode to run: train, evaluate, predict, info, analyze, or best_samples'
     )
     
     parser.add_argument(
@@ -121,6 +125,21 @@ Examples:
         type=float,
         default=0.5,
         help='Threshold for binary segmentation in prediction mode (default: 0.5)'
+    )
+    
+    parser.add_argument(
+        '--rank-by',
+        type=str,
+        choices=['dice', 'loss'],
+        default='dice',
+        help='For best_samples: which checkpoint to use (default: dice -> best_by_dice.pth)'
+    )
+    
+    parser.add_argument(
+        '--num-best',
+        type=int,
+        default=10,
+        help='For best_samples: number of best samples to save (default: 10)'
     )
     
     return parser.parse_args()
@@ -265,6 +284,37 @@ def main():
         except Exception as e:
             print("\n" + "=" * 80)
             print(f"Evaluation failed with error: {str(e)}")
+            print("=" * 80)
+            raise
+    
+    elif args.mode == 'best_samples':
+        from evaluate import evaluate_and_save_best_samples
+        
+        print_config_info()
+        print("\n" + "=" * 80)
+        print("Best samples: find top samples by Dice and save visualization")
+        print("=" * 80 + "\n")
+        
+        try:
+            avg_metrics, std_metrics, _ = evaluate_and_save_best_samples(
+                checkpoint_path=args.checkpoint,
+                split=args.split,
+                num_best=args.num_best,
+                rank_by=args.rank_by,
+                save_path=None
+            )
+            print("\n" + "=" * 80)
+            print("Best-samples run completed successfully!")
+            print("=" * 80)
+        except FileNotFoundError as e:
+            print("\n" + "=" * 80)
+            print(f"Error: {str(e)}")
+            print("Train the model first or pass --checkpoint.")
+            print("=" * 80)
+            sys.exit(1)
+        except Exception as e:
+            print("\n" + "=" * 80)
+            print(f"Best samples failed: {str(e)}")
             print("=" * 80)
             raise
     

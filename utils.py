@@ -429,8 +429,13 @@ def load_checkpoint(model, optimizer, filepath, device):
         tuple: (model, optimizer, epoch, loss, metrics)
     """
     checkpoint = torch.load(filepath, map_location=device, weights_only=False)
-    
-    model.load_state_dict(checkpoint['model_state_dict'])
+    state_dict = checkpoint['model_state_dict']
+
+    # Backward compatibility: old checkpoints used "bottleneck", current model uses "bottleneck_conv"
+    if any(k.startswith('bottleneck.') for k in state_dict) and not any(k.startswith('bottleneck_conv.') for k in state_dict):
+        state_dict = {k.replace('bottleneck.', 'bottleneck_conv.', 1): v for k, v in state_dict.items()}
+
+    model.load_state_dict(state_dict)
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     
     epoch = checkpoint['epoch']

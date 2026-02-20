@@ -26,6 +26,7 @@ This project implements a ResUNet model for automated detection and segmentation
 - **Data Augmentation**: Built-in augmentation for improved generalization
 - **Visualization**: Automatic generation of prediction visualizations
 - **Checkpointing**: Automatic saving of best models and periodic checkpoints
+- **Best-samples mode**: Ranks test samples by Dice and saves only the top N (e.g. 10) in a single figure — ideal for clean visualizations
 - **Early Stopping**: Prevents overfitting with configurable patience
 - **Learning Rate Scheduling**: Adaptive learning rate adjustment
 
@@ -156,7 +157,32 @@ Evaluate on validation set:
 python main.py --mode evaluate --split val
 ```
 
-### 4. Individual Module Usage
+### 4. Best samples (top N by Dice)
+
+Unlike `--mode evaluate`, which saves the **first** N test samples, this mode runs through the full test set, ranks every sample by **per-sample Dice**, and saves only the **top N** (default 10) in one figure — same vertical layout: Input | Ground Truth | Prediction. Use this when you want a figure with the model’s best-performing examples only.
+
+Use the best-by-Dice checkpoint (default):
+
+```bash
+python main.py --mode best_samples --rank-by dice
+```
+
+Use the best-by-loss checkpoint:
+
+```bash
+python main.py --mode best_samples --rank-by loss
+```
+
+Save a different number of top samples or use a specific checkpoint:
+
+```bash
+python main.py --mode best_samples --num-best 20
+python main.py --mode best_samples --checkpoint checkpoints/best_by_dice.pth --num-best 10
+```
+
+Outputs are written to `results/<model_name>/test_predictions_best<N>.png` (and `.svg`), plus `best_<N>_dice_scores.json` with the Dice scores of the saved samples.
+
+### 5. Individual Module Usage
 
 You can also run individual modules directly:
 
@@ -247,7 +273,8 @@ Key configuration parameters in `config.py`:
 After training, results are saved in the `results/` directory:
 
 - `training_history.png`: Loss and Dice score curves
-- `test_predictions.png`: Sample predictions on test set
+- `test_predictions.png`: Sample predictions on test set (first N samples from evaluate)
+- `test_predictions_best10.png`: Top 10 test samples by Dice (from `--mode best_samples`)
 - `test_results.json`: Detailed evaluation metrics
 
 ### Results Analysis & Visualization

@@ -18,6 +18,7 @@ from ResUNet_model import ResUNet
 from fetch_data import MSDataFetcher
 from utils import (
     calculate_metrics,
+    dice_coefficient,
     load_checkpoint,
     visualize_predictions,
     set_seed
@@ -318,6 +319,164 @@ class Evaluator:
             stats['avg_predicted_coverage'] /= stats['predictions_with_lesions']
         
         return stats
+
+
+def evaluate_and_save_best_samples(
+    checkpoint_path=None,
+    split='test',
+    num_best=10,
+    rank_by='dice',
+    save_path=None
+):
+    """
+    Run the best model (by loss or dice) on the test set, rank samples by per-sample
+    Dice, and save only the top num_best samples in a vertical row (same layout as
+    mode --evaluate: Input | Ground Truth | Prediction).
+
+    Goes through all samples to find the best ones by accuracy (Dice), then stops
+    and saves only those — unlike evaluate which saves the first N samples.
+
+    Args:
+        checkpoint_path (str): Path to checkpoint. If None, uses best_by_dice.pth
+            or best_by_loss.pth according to rank_by.
+        split (str): Dataset split ('test', 'val', or 'train').
+        num_best (int): Number of best samples to save (default 10).
+        rank_by (str): Which best checkpoint to load when checkpoint_path is None:
+            'dice' -> checkpoints/best_by_dice.pth, 'loss' -> checkpoints/best_by_loss.pth.
+            Samples are always ranked by per-sample Dice (higher = better).
+        save_path (str): Path for the output image. If None, saved to
+            results/<model_name>/test_predictions_best10.png (and .svg).
+
+    Returns:
+        tuple: (avg_metrics, std_metrics) over full split; and the list of (dice, index)
+            for the saved samples.
+    """
+    set_seed(config.RANDOM_SEED)
+
+    if checkpoint_path is None:
+        if rank_by == 'dice':
+            checkpoint_path = os.path.join(config.CHECKPOINT_DIR, 'best_by_dice.pth')
+        else:
+            checkpoint_path = os.path.join(config.CHECKPOINT_DIR, 'best_by_loss.pth')
+    if not os.path.exists(checkpoint_path):
+        raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
+
+    checkpoint_filename = os.path.basename(checkpoint_path)
+    model_name = os.path.splitext(checkpoint_filename)[0]
+    model_results_dir = os.path.join(config.RESULTS_DIR, model_name)
+    os.makedirs(model_results_dir, exist_ok=True)
+    original_results_dir = config.RESULTS_DIR
+    config.RESULTS_DIR = model_results_dir
+
+    use_sliding_window = getattr(config, 'USE_PATCH_TRAINING', False)
+    if use_sliding_window:
+        patch_size = getattr(config, 'PATCH_SIZE', (256, 256))
+        stride = (patch_size[0] // 2, patch_size[1] // 2)
+
+    print("Loading data...")
+    data_fetcher = MSDataFetcher(
+        batch_size=config.EVAL_BATCH_SIZE,
+        image_size=config.IMAGE_SIZE,
+        use_augmentation=False
+    )
+    test_loader = data_fetcher.get_loader(split)
+
+    print("Loading model...")
+    model = ResUNet(
+        in_channels=config.IN_CHANNELS,
+        out_channels=config.OUT_CHANNELS,
+        filters=config.FILTERS,
+        use_transformer=getattr(config, 'USE_TRANSFORMER', True),
+        transformer_layers=getattr(config, 'TRANSFORMER_LAYERS', 2),
+        transformer_heads=getattr(config, 'TRANSFORMER_HEADS', 8),
+        transformer_dim=getattr(config, 'TRANSFORMER_DIM', None)
+    ).to(config.DEVICE)
+    optimizer = torch.optim.Adam(model.parameters())
+    model, _, epoch, _, metrics = load_checkpoint(
+        model, optimizer, checkpoint_path, config.DEVICE
+    )
+    model.eval()
+
+    print(f"Finding top {num_best} samples by Dice (checkpoint: {checkpoint_filename})...")
+    # (dice_score, image, mask, prediction) per sample
+    samples = []
+    all_metrics = {'dice': [], 'iou': [], 'accuracy': [], 'sensitivity': [], 'specificity': []}
+
+    with torch.no_grad():
+        pbar = tqdm(test_loader, desc='Scoring samples')
+        for images, masks in pbar:
+            images = images.to(config.DEVICE)
+            masks = masks.to(config.DEVICE)
+            if use_sliding_window:
+                batch_predictions = []
+                for i in range(images.shape[0]):
+                    pred = sliding_window_inference(
+                        model=model,
+                        image=images[i:i+1],
+                        patch_size=patch_size,
+                        stride=stride,
+                        device=config.DEVICE
+                    )
+                    batch_predictions.append(pred)
+                outputs = torch.cat(batch_predictions, dim=0)
+            else:
+                outputs = model(images)
+
+            for i in range(images.shape[0]):
+                dice = dice_coefficient(
+                    outputs[i:i+1], masks[i:i+1],
+                    threshold=config.THRESHOLD
+                )
+                samples.append((
+                    dice,
+                    images[i:i+1].cpu(),
+                    masks[i:i+1].cpu(),
+                    outputs[i:i+1].cpu()
+                ))
+            batch_metrics = calculate_metrics(outputs, masks)
+            for key in all_metrics:
+                all_metrics[key].append(batch_metrics[key])
+            pbar.set_postfix({'samples': len(samples), 'dice': f"{batch_metrics['dice']:.4f}"})
+
+    # Sort by Dice descending (best first), take top num_best
+    samples.sort(key=lambda x: x[0], reverse=True)
+    top = samples[:num_best]
+    if not top:
+        config.RESULTS_DIR = original_results_dir
+        raise ValueError("No samples in dataset.")
+
+    vis_images = torch.cat([x[1] for x in top], dim=0)
+    vis_masks = torch.cat([x[2] for x in top], dim=0)
+    vis_predictions = torch.cat([x[3] for x in top], dim=0)
+    dice_scores = [x[0] for x in top]
+
+    if save_path is None:
+        save_path = os.path.join(
+            config.RESULTS_DIR,
+            f'test_predictions_best{num_best}.png'
+        )
+    from pathlib import Path
+    p = Path(save_path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    visualize_predictions(
+        vis_images,
+        vis_masks,
+        vis_predictions,
+        num_samples=len(top),
+        save_path=str(p)
+    )
+    print(f"Saved top {num_best} samples (by Dice) to {save_path} and {p.with_suffix('.svg')}")
+
+    # Optionally save dice scores for the best samples
+    best_scores_path = os.path.join(config.RESULTS_DIR, f'best_{num_best}_dice_scores.json')
+    with open(best_scores_path, 'w') as f:
+        json.dump({'dice_scores': dice_scores, 'num_best': num_best}, f, indent=2)
+    print(f"Dice scores for best samples saved to {best_scores_path}")
+
+    avg_metrics = {key: float(np.mean(values)) for key, values in all_metrics.items()}
+    std_metrics = {key: float(np.std(values)) for key, values in all_metrics.items()}
+    config.RESULTS_DIR = original_results_dir
+    return avg_metrics, std_metrics, list(zip(dice_scores, range(len(top))))
 
 
 def evaluate_model(checkpoint_path=None, split='test'):
