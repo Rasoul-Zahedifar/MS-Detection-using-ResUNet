@@ -28,7 +28,7 @@ os.makedirs(RESULTS_DIR, exist_ok=True)
 # ===========================
 # Model Configuration
 # ===========================
-MODEL_NAME = 'ResUNet-Transformer'
+MODEL_NAME = 'ResUNet'
 IN_CHANNELS = 1  # Grayscale images
 OUT_CHANNELS = 1  # Binary segmentation mask
 FILTERS = [64, 128, 256, 512]  # Filter sizes for encoder
