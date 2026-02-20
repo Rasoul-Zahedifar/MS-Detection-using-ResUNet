@@ -450,11 +450,13 @@ class ResultsVisualizer:
         ax1.set_title('Performance Category Distribution', fontsize=14, fontweight='bold', pad=20)
         ax1.grid(axis='y', alpha=0.3)
         
-        # Pie chart
-        explode = (0.05, 0.05, 0.05, 0.05, 0.05)
-        wedges, texts, autotexts = ax2.pie(counts, labels=categories, autopct='%1.1f%%',
-                                           colors=colors_cat, explode=explode,
-                                           shadow=True, startangle=90)
+        # Pie chart - only include non-zero wedges to prevent Poor/Failed label overlap
+        nonzero = [(c, cat, col, 0.05) for c, cat, col in zip(counts, categories, colors_cat) if c > 0]
+        if nonzero:
+            pie_counts, pie_labels, pie_colors, pie_explode = zip(*nonzero)
+            wedges, texts, autotexts = ax2.pie(pie_counts, labels=pie_labels, autopct='%1.1f%%',
+                                               colors=pie_colors, explode=pie_explode,
+                                               shadow=True, startangle=90)
         
         for autotext in autotexts:
             autotext.set_color('white')
@@ -549,8 +551,10 @@ class ResultsVisualizer:
         categories = ['Excellent', 'Good', 'Fair', 'Poor', 'Failed']
         counts = [excellent, good, fair, poor, failed]
         colors_cat = ['#2ECC71', '#3498DB', '#F39C12', '#E74C3C', '#95A5A6']
-        
-        ax.pie(counts, labels=categories, autopct='%1.1f%%', colors=colors_cat, startangle=90)
+        nonzero = [(c, cat, col) for c, cat, col in zip(counts, categories, colors_cat) if c > 0]
+        if nonzero:
+            pie_counts, pie_labels, pie_colors = zip(*nonzero)
+            ax.pie(pie_counts, labels=pie_labels, autopct='%1.1f%%', colors=pie_colors, startangle=90)
         ax.set_title('Performance Categories', fontsize=12, fontweight='bold')
         
         # Row 5: Scatter plots
