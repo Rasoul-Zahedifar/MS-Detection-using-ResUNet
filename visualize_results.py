@@ -485,8 +485,11 @@ class ResultsVisualizer:
         if not self.dice_results:
             return
         
-        fig = plt.figure(figsize=(20, 24))
-        gs = GridSpec(6, 3, figure=fig, hspace=0.4, wspace=0.3)
+        # Use 7 rows if we have both models for comparison, else 6
+        has_model_comparison = self.dice_results and self.loss_results
+        n_rows = 7 if has_model_comparison else 6
+        fig = plt.figure(figsize=(20, 24 + (4 if has_model_comparison else 0)))
+        gs = GridSpec(n_rows, 3, figure=fig, hspace=0.4, wspace=0.3)
         
         metrics = ['dice', 'iou', 'accuracy', 'sensitivity', 'specificity']
         colors_metrics = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8']
@@ -564,41 +567,93 @@ class ResultsVisualizer:
                        fontsize=10, fontweight='bold')
             ax.grid(alpha=0.3)
         
-        # Row 6: Summary statistics table
-        ax = fig.add_subplot(gs[5, :])
-        ax.axis('tight')
-        ax.axis('off')
+        # Row 5: Descriptive Statistics table (full form)
+        ax_stats = fig.add_subplot(gs[5, :])
+        ax_stats.axis('tight')
+        ax_stats.axis('off')
         
-        # Create table data
-        table_data = [['Metric', 'Mean', 'Std', 'Min', 'Max', 'Median']]
+        # Create full descriptive statistics table: Metric, Mean, Median, Std Dev, Min, Max, Q1, Q3, IQR, Skewness, Kurtosis
+        table_data = [['Metric', 'Mean', 'Median', 'Std Dev', 'Min', 'Max', 'Q1', 'Q3', 'IQR', 'Skewness', 'Kurtosis']]
         for metric in metrics:
             data = self.dice_results['all_metrics'][metric]
+            q1, q3 = np.percentile(data, 25), np.percentile(data, 75)
             row = [
                 metric.capitalize(),
                 f'{np.mean(data):.4f}',
+                f'{np.median(data):.4f}',
                 f'{np.std(data):.4f}',
                 f'{np.min(data):.4f}',
                 f'{np.max(data):.4f}',
-                f'{np.median(data):.4f}'
+                f'{q1:.4f}',
+                f'{q3:.4f}',
+                f'{q3 - q1:.4f}',
+                f'{stats.skew(data):.4f}',
+                f'{stats.kurtosis(data):.4f}'
             ]
             table_data.append(row)
         
-        table = ax.table(cellText=table_data, cellLoc='center', loc='center',
-                        colWidths=[0.15, 0.17, 0.17, 0.17, 0.17, 0.17])
+        n_cols = 11
+        col_widths = [0.10] + [0.082] * (n_cols - 1)  # Metric wider, rest equal
+        table = ax_stats.table(cellText=table_data, cellLoc='center', loc='center',
+                               colWidths=col_widths)
         table.auto_set_font_size(False)
-        table.set_fontsize(9)
+        table.set_fontsize(7)
         table.scale(1, 2)
         
         # Style header row
-        for i in range(6):
+        for i in range(n_cols):
             table[(0, i)].set_facecolor('#34495E')
             table[(0, i)].set_text_props(weight='bold', color='white')
         
         # Alternate row colors
         for i in range(1, len(table_data)):
-            for j in range(6):
+            for j in range(n_cols):
                 if i % 2 == 0:
                     table[(i, j)].set_facecolor('#ECF0F1')
+        
+        # Add table title
+        ax_stats.set_title('Descriptive Statistics (Best by Dice Model)', fontsize=12, fontweight='bold', pad=10)
+        
+        # Row 6: Model Comparison table (Best by Dice vs Best by Loss)
+        if has_model_comparison:
+            ax_compare = fig.add_subplot(gs[6, :])
+            ax_compare.axis('tight')
+            ax_compare.axis('off')
+            
+            compare_data = [['Metric', 'Best by Dice (Mean ± Std)', 'Best by Loss (Mean ± Std)', 
+                            'Difference', 'Better Model']]
+            for metric in metrics:
+                dice_mean = self.dice_results['average_metrics'][metric]
+                dice_std = self.dice_results['std_metrics'][metric]
+                loss_mean = self.loss_results['average_metrics'][metric]
+                loss_std = self.loss_results['std_metrics'][metric]
+                diff = dice_mean - loss_mean
+                better = 'Dice' if dice_mean > loss_mean else 'Loss'
+                compare_data.append([
+                    metric.capitalize(),
+                    f'{dice_mean:.4f} ± {dice_std:.4f}',
+                    f'{loss_mean:.4f} ± {loss_std:.4f}',
+                    f'{diff:.4f}',
+                    better
+                ])
+            
+            table2 = ax_compare.table(cellText=compare_data, cellLoc='center', loc='center',
+                                     colWidths=[0.12, 0.25, 0.25, 0.13, 0.15])
+            table2.auto_set_font_size(False)
+            table2.set_fontsize(9)
+            table2.scale(1, 2)
+            
+            for i in range(5):
+                table2[(0, i)].set_facecolor('#2E86AB')
+                table2[(0, i)].set_text_props(weight='bold', color='white')
+            
+            for i in range(1, len(compare_data)):
+                for j in range(5):
+                    if i % 2 == 0:
+                        table2[(i, j)].set_facecolor('#ECF0F1')
+            
+            ax_compare.set_title('Model Performance Comparison (Best by Dice vs Best by Loss)', 
+                               fontsize=12, fontweight='bold', pad=10)
         
         # Add title
         fig.suptitle('MS Detection ResUNet - Comprehensive Results Report', 
