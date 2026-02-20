@@ -29,6 +29,16 @@ COLOR_LOSS = '#A23B72'
 COLOR_PRIMARY = '#06A77D'
 COLOR_SECONDARY = '#F18F01'
 
+
+def _save_fig(path, **kwargs):
+    """Save figure as both PNG and SVG."""
+    path = Path(path)
+    plt.savefig(path, bbox_inches='tight', **kwargs)
+    svg_path = path.with_suffix('.svg')
+    svg_kwargs = {k: v for k, v in kwargs.items() if k != 'dpi'}
+    plt.savefig(svg_path, bbox_inches='tight', format='svg', **svg_kwargs)
+
+
 class ResultsVisualizer:
     """Class to handle all visualization and analysis tasks"""
     
@@ -163,7 +173,7 @@ class ResultsVisualizer:
         
         plt.tight_layout()
         save_path = self.output_dir / 'metric_comparison_bar.png'
-        plt.savefig(save_path, bbox_inches='tight')
+        _save_fig(save_path)
         print(f"✓ Comparison plot saved to: {save_path}")
         plt.close()
     
@@ -215,7 +225,7 @@ class ResultsVisualizer:
         
         plt.tight_layout()
         save_path = self.output_dir / 'metric_distributions.png'
-        plt.savefig(save_path, bbox_inches='tight')
+        _save_fig(save_path)
         print(f"✓ Distribution plots saved to: {save_path}")
         plt.close()
     
@@ -251,7 +261,7 @@ class ResultsVisualizer:
         
         plt.tight_layout()
         save_path = self.output_dir / 'metric_boxplots.png'
-        plt.savefig(save_path, bbox_inches='tight')
+        _save_fig(save_path)
         print(f"✓ Box plots saved to: {save_path}")
         plt.close()
     
@@ -279,7 +289,7 @@ class ResultsVisualizer:
         
         plt.tight_layout()
         save_path = self.output_dir / 'correlation_heatmap.png'
-        plt.savefig(save_path, bbox_inches='tight')
+        _save_fig(save_path)
         print(f"✓ Correlation heatmap saved to: {save_path}")
         plt.close()
         
@@ -334,7 +344,7 @@ class ResultsVisualizer:
         
         plt.tight_layout()
         save_path = self.output_dir / 'scatter_plots.png'
-        plt.savefig(save_path, bbox_inches='tight')
+        _save_fig(save_path)
         print(f"✓ Scatter plots saved to: {save_path}")
         plt.close()
     
@@ -408,7 +418,7 @@ class ResultsVisualizer:
         
         plt.tight_layout()
         save_path = self.output_dir / 'percentile_analysis.png'
-        plt.savefig(save_path, bbox_inches='tight')
+        _save_fig(save_path)
         print(f"✓ Percentile analysis saved to: {save_path}")
         plt.close()
     
@@ -467,7 +477,7 @@ class ResultsVisualizer:
         
         plt.tight_layout()
         save_path = self.output_dir / 'performance_categories.png'
-        plt.savefig(save_path, bbox_inches='tight')
+        _save_fig(save_path)
         print(f"✓ Performance categories saved to: {save_path}")
         plt.close()
         
@@ -664,7 +674,7 @@ class ResultsVisualizer:
                     fontsize=18, fontweight='bold', y=0.995)
         
         save_path = self.output_dir / 'comprehensive_report.png'
-        plt.savefig(save_path, bbox_inches='tight', dpi=300)
+        _save_fig(save_path, dpi=300)
         print(f"✓ Comprehensive report saved to: {save_path}")
         plt.close()
     

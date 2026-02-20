@@ -333,8 +333,11 @@ def visualize_predictions(images, masks, predictions, num_samples=4, save_path=N
     plt.tight_layout()
     
     if save_path:
-        plt.savefig(save_path, bbox_inches='tight', dpi=150)
-        print(f"Saved visualization to {save_path}")
+        from pathlib import Path
+        p = Path(save_path)
+        plt.savefig(p, bbox_inches='tight', dpi=150)
+        plt.savefig(p.with_suffix('.svg'), bbox_inches='tight', format='svg')
+        print(f"Saved visualization to {save_path} and {p.with_suffix('.svg')}")
     else:
         plt.show()
     
@@ -373,8 +376,11 @@ def plot_training_history(history, save_path=None):
     plt.tight_layout()
     
     if save_path:
-        plt.savefig(save_path, bbox_inches='tight', dpi=150)
-        print(f"Saved training history to {save_path}")
+        from pathlib import Path
+        p = Path(save_path)
+        plt.savefig(p, bbox_inches='tight', dpi=150)
+        plt.savefig(p.with_suffix('.svg'), bbox_inches='tight', format='svg')
+        print(f"Saved training history to {save_path} and {p.with_suffix('.svg')}")
     else:
         plt.show()
     
