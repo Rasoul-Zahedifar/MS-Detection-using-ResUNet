@@ -418,11 +418,7 @@ def train_model(resume_from=None):
     model = ResUNet(
         in_channels=config.IN_CHANNELS,
         out_channels=config.OUT_CHANNELS,
-        filters=config.FILTERS,
-        use_transformer=getattr(config, 'USE_TRANSFORMER', True),
-        transformer_layers=getattr(config, 'TRANSFORMER_LAYERS', 2),
-        transformer_heads=getattr(config, 'TRANSFORMER_HEADS', 8),
-        transformer_dim=getattr(config, 'TRANSFORMER_DIM', None)
+        filters=config.FILTERS
     ).to(config.DEVICE)
     
     # Create optimizer

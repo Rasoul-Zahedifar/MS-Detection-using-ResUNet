@@ -88,11 +88,10 @@ class ExperimentComparator:
             
             row = {
                 'experiment': exp['experiment_name'],
-                'USE_TRANSFORMER': config['USE_TRANSFORMER'],
-                'USE_AUGMENTATION': config['USE_AUGMENTATION'],
-                'USE_PATCH_TRAINING': config['USE_PATCH_TRAINING'],
-                'USE_CLASS_SAMPLING': config['USE_CLASS_SAMPLING'],
-                'LOSS_TYPE': config['LOSS_TYPE'],
+                'USE_AUGMENTATION': config.get('USE_AUGMENTATION', True),
+                'USE_PATCH_TRAINING': config.get('USE_PATCH_TRAINING', True),
+                'USE_CLASS_SAMPLING': config.get('USE_CLASS_SAMPLING', True),
+                'LOSS_TYPE': config.get('LOSS_TYPE', 'weighted_combined'),
                 'dice_score': avg_metrics.get('dice_score', np.nan),
                 'iou': avg_metrics.get('iou', np.nan),
                 'precision': avg_metrics.get('precision', np.nan),
@@ -129,12 +128,11 @@ class ExperimentComparator:
             
             # Format top 10
             top10 = df_sorted.head(10)
-            f.write("| Rank | Experiment | Transformer | Aug | Patch | Sampling | Loss | Dice | IoU | Precision | Recall | F1 |\n")
-            f.write("|------|------------|-------------|-----|-------|----------|------|------|-----|-----------|--------|----|\n")
+            f.write("| Rank | Experiment | Aug | Patch | Sampling | Loss | Dice | IoU | Precision | Recall | F1 |\n")
+            f.write("|------|------------|-----|-------|----------|------|------|-----|-----------|--------|----|\n")
             
             for idx, (_, row) in enumerate(top10.iterrows(), 1):
                 f.write(f"| {idx} | {row['experiment']} | "
-                       f"{'✓' if row['USE_TRANSFORMER'] else '✗'} | "
                        f"{'✓' if row['USE_AUGMENTATION'] else '✗'} | "
                        f"{'✓' if row['USE_PATCH_TRAINING'] else '✗'} | "
                        f"{'✓' if row['USE_CLASS_SAMPLING'] else '✗'} | "
@@ -193,8 +191,8 @@ class ExperimentComparator:
         """Analyze impact of each configuration parameter"""
         print("\nAnalyzing configuration impact...")
         
-        config_params = ['USE_TRANSFORMER', 'USE_AUGMENTATION', 
-                        'USE_PATCH_TRAINING', 'USE_CLASS_SAMPLING', 'LOSS_TYPE']
+        config_params = ['USE_AUGMENTATION', 'USE_PATCH_TRAINING', 
+                        'USE_CLASS_SAMPLING', 'LOSS_TYPE']
         metrics = ['dice_score', 'iou', 'precision', 'recall', 'f1_score']
         
         fig, axes = plt.subplots(len(config_params), len(metrics), 
@@ -314,7 +312,6 @@ class ExperimentComparator:
                 f.write(f"- **Experiment**: {best['experiment']}\n")
                 f.write(f"- **Score**: {best[metric]:.4f}\n")
                 f.write(f"- **Configuration**:\n")
-                f.write(f"  - Transformer: {best['USE_TRANSFORMER']}\n")
                 f.write(f"  - Augmentation: {best['USE_AUGMENTATION']}\n")
                 f.write(f"  - Patch Training: {best['USE_PATCH_TRAINING']}\n")
                 f.write(f"  - Class Sampling: {best['USE_CLASS_SAMPLING']}\n")
@@ -324,8 +321,7 @@ class ExperimentComparator:
             f.write("## Statistical Summary\n\n")
             f.write("### Mean Metrics by Configuration Parameter\n\n")
             
-            for param in ['USE_TRANSFORMER', 'USE_AUGMENTATION', 
-                         'USE_PATCH_TRAINING', 'USE_CLASS_SAMPLING']:
+            for param in ['USE_AUGMENTATION', 'USE_PATCH_TRAINING', 'USE_CLASS_SAMPLING']:
                 f.write(f"#### {param}\n\n")
                 summary = df.groupby(param)[['dice_score', 'iou', 'precision', 
                                             'recall', 'f1_score']].mean()
@@ -347,7 +343,6 @@ class ExperimentComparator:
             f.write(f"- **Experiment**: {best_dice['experiment']}\n")
             f.write(f"- **Dice Score**: {best_dice['dice_score']:.4f}\n")
             f.write(f"- **Configuration**:\n")
-            f.write(f"  - Transformer: {best_dice['USE_TRANSFORMER']}\n")
             f.write(f"  - Augmentation: {best_dice['USE_AUGMENTATION']}\n")
             f.write(f"  - Patch Training: {best_dice['USE_PATCH_TRAINING']}\n")
             f.write(f"  - Class Sampling: {best_dice['USE_CLASS_SAMPLING']}\n")

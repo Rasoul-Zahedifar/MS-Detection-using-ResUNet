@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Run multiple experiments with different configuration variations
-Generates all combinations of USE_TRANSFORMER, USE_AUGMENTATION, USE_PATCH_TRAINING, 
+Generates all combinations of USE_AUGMENTATION, USE_PATCH_TRAINING, 
 USE_CLASS_SAMPLING, and LOSS_TYPE, runs the pipeline for each, and saves results.
 """
 
@@ -34,7 +34,6 @@ class Colors:
 def get_experiment_name(config):
     """Generate a descriptive name for the experiment"""
     parts = []
-    parts.append("T" if config['USE_TRANSFORMER'] else "NoT")
     parts.append("A" if config['USE_AUGMENTATION'] else "NoA")
     parts.append("P" if config['USE_PATCH_TRAINING'] else "NoP")
     parts.append("S" if config['USE_CLASS_SAMPLING'] else "NoS")
@@ -132,14 +131,12 @@ def run_experiment(experiment_dir, config_overrides, base_dir):
 
 def generate_all_combinations():
     """Generate all combinations of configuration parameters"""
-    use_transformer = [True, False]
     use_augmentation = [True, False]
     use_patch_training = [True, False]
     use_class_sampling = [True, False]
     loss_types = ['bce', 'dice', 'focal', 'combined', 'weighted_combined']
     
     combinations = list(product(
-        use_transformer,
         use_augmentation,
         use_patch_training,
         use_class_sampling,
@@ -149,11 +146,10 @@ def generate_all_combinations():
     configs = []
     for combo in combinations:
         config = {
-            'USE_TRANSFORMER': combo[0],
-            'USE_AUGMENTATION': combo[1],
-            'USE_PATCH_TRAINING': combo[2],
-            'USE_CLASS_SAMPLING': combo[3],
-            'LOSS_TYPE': combo[4]
+            'USE_AUGMENTATION': combo[0],
+            'USE_PATCH_TRAINING': combo[1],
+            'USE_CLASS_SAMPLING': combo[2],
+            'LOSS_TYPE': combo[3]
         }
         configs.append(config)
     
